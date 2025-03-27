@@ -3,7 +3,7 @@ import json
 import subprocess
 import tempfile
 
-openai_client = OpenAI(api_key='sk-proj-rMn1qOJB9Yx2hPNJOryJT3BlbkFJAUa9pyzuZvbkpPnnfin3')
+# openai_client = OpenAI(api_key='sk-proj-rMn1qOJB9Yx2hPNJOryJT3BlbkFJAUa9pyzuZvbkpPnnfin3')
 
 # Function to get improvement suggestions for the code
 def get_code_suggestions(script: str, output: str, model: str = "gpt-4") -> str:
