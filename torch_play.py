@@ -8,6 +8,7 @@ import boto3
 import io
 import os
 import logging
+from torch.utils.data import DataLoader, TensorDataset
 
 # Set up logging configuration at the start of the file
 logging.basicConfig(
@@ -240,41 +241,43 @@ def preprocess_data(df):
         # 'Random'
         ]]
     )
-    scaled_data_Y = np.array(df[['Highly_Positive', 'Positive', 'Negative', 'Highly_Negative']])
+    scaled_data_Y = np.array(df['Next_Day_Return'])
 
     # Prepare sequences
     X, y = [], []
     DAYS_LOOKBACK = 1
-    DAYS_FORWARD = 1
     for i in range(DAYS_LOOKBACK, len(scaled_data) - DAYS_LOOKBACK):
-        # Input: last 7 days (price, return, month)
         X.append(scaled_data[i-DAYS_LOOKBACK:i])
-        
-        # Output: return for the next 7 days
-        y.append(scaled_data_Y[i])  
-
-    logger.debug("Data preprocessing completed")
-    return np.array(X), np.array(y) #, scaler
+        y.append(scaled_data_Y[i])
+    
+    # Log data statistics
+    logger.info(f"Target return statistics:")
+    logger.info(f"  Mean: {np.mean(scaled_data_Y):.4f}")
+    logger.info(f"  Std: {np.std(scaled_data_Y):.4f}")
+    logger.info(f"  Min: {np.min(scaled_data_Y):.4f}")
+    logger.info(f"  Max: {np.max(scaled_data_Y):.4f}")
+    
+    return np.array(X), np.array(y).reshape(-1, 1)  # Reshape y to be (n_samples, 1)
 
 
 # Define the neural network for stock prediction
 class StockPredictor(nn.Module):
     def __init__(self):
         super(StockPredictor, self).__init__()
-        self.flatten = nn.Flatten()  # Flatten the input sequence
-        self.fc1 = nn.Linear(38, 100)  # Input features -> first hidden layer
-        self.fc2 = nn.Linear(100, 100)  # First -> second hidden layer
-        self.fc3 = nn.Linear(100, 30)  # First -> second hidden layer
-        self.fc4 = nn.Linear(30, 4)   # Second hidden layer -> output (4 classes)
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(38, 100)
+        self.fc2 = nn.Linear(100, 50)
+        self.fc3 = nn.Linear(50, 20)
+        self.fc4 = nn.Linear(20, 1)  # Output single value for return
         self.relu = nn.ReLU()
-        self.softmax = nn.Softmax(dim=1)
+        self.dropout = nn.Dropout(0.2)
         
     def forward(self, x):
         x = self.flatten(x)
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        x= self.relu(self.fc3(x))
-        x = self.relu(self.fc4(x))
+        x = self.dropout(self.relu(self.fc1(x)))
+        x = self.dropout(self.relu(self.fc2(x)))
+        x = self.dropout(self.relu(self.fc3(x)))
+        x = self.fc4(x)  # No activation for regression output
         return x
 
 TICKERS = ['GOOG', 'AAPL', 'NVDA', 'MSFT', 'AMZN', 'TSLA',
@@ -285,76 +288,179 @@ TICKERS = ['GOOG', 'AAPL', 'NVDA', 'MSFT', 'AMZN', 'TSLA',
 DATA_FOLDER = "data/"
 TRAIN_SIZE_SPLIT = 0.9
 
-logger.info("Starting stock prediction model training")
-
-logger.info("Loading data...")
-all_data = load_data(TICKERS, DATA_FOLDER)
-X_train_all, X_test_all, y_train_all, y_test_all = [], [], [], []
-
-logger.info("Preprocessing data for each ticker...")
-for ticker in TICKERS:
-    logger.debug(f"Processing {ticker}")
-    df = all_data[ticker]
-    X, y = preprocess_data(df)
-    train_size = int(TRAIN_SIZE_SPLIT * len(X))
-    X_train, X_test = X[:train_size], X[train_size:]
-    y_train, y_test = y[:train_size], y[train_size:]
-    X_train_all.append(X_train)
-    X_test_all.append(X_test)
-    y_train_all.append(y_train)
-    y_test_all.append(y_test)
-
-X_train_all = np.concatenate(X_train_all)
-X_test_all = np.concatenate(X_test_all)
-y_train_all = np.concatenate(y_train_all)
-y_test_all = np.concatenate(y_test_all)
-
-logger.info(f"Data shapes - Training: {X_train_all.shape}, Testing: {X_test_all.shape}")
-
-logger.info("Converting data to PyTorch tensors...")
-X_train_tensor = torch.FloatTensor(X_train_all)
-y_train_tensor = torch.FloatTensor(y_train_all)
-X_test_tensor = torch.FloatTensor(X_test_all)
-y_test_tensor = torch.FloatTensor(y_test_all)
-
-device = (
-    torch.device("mps") if torch.backends.mps.is_available()
-    else torch.device("cuda") if torch.cuda.is_available()
-    else torch.device("cpu")
-)
-logger.info(f'Using device: {device}')
-
-logger.info("Moving data to device...")
-X_train_tensor = X_train_tensor.to(device)
-y_train_tensor = y_train_tensor.to(device)
-model = StockPredictor().to(device)
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-logger.info("Starting training...")
-for epoch in range(50000): 
-    optimizer.zero_grad() 
-    output = model(X_train_tensor)
-    loss = criterion(output, y_train_tensor)
-    loss.backward() 
-    optimizer.step()
+# Wrap the main execution code
+if __name__ == '__main__':
+    logger.info("Starting stock prediction model training")
     
-    if epoch % 1000 == 0:
-        logger.info(f'Epoch {epoch}, Loss: {loss.item():.4f}')
+    # Load and preprocess data
+    all_data = load_data(TICKERS, DATA_FOLDER)
+    X_train_all, X_test_all, y_train_all, y_test_all = [], [], [], []
 
-logger.info("Training completed. Saving model...")
+    for ticker in TICKERS:
+        df = all_data[ticker]
+        X, y = preprocess_data(df)
+        train_size = int(TRAIN_SIZE_SPLIT * len(X))
+        X_train, X_test = X[:train_size], X[train_size:]
+        y_train, y_test = y[:train_size], y[train_size:]
+        X_train_all.append(X_train)
+        X_test_all.append(X_test)
+        y_train_all.append(y_train)
+        y_test_all.append(y_test)
 
-try:
-    buffer = io.BytesIO()
-    torch.save(model.state_dict(), buffer)
-    buffer.seek(0)
+    X_train_all = np.concatenate(X_train_all)
+    X_test_all = np.concatenate(X_test_all)
+    y_train_all = np.concatenate(y_train_all)
+    y_test_all = np.concatenate(y_test_all)
+
+    # Create datasets
+    train_dataset = TensorDataset(
+        torch.FloatTensor(X_train_all),
+        torch.FloatTensor(y_train_all)
+    )
+    test_dataset = TensorDataset(
+        torch.FloatTensor(X_test_all),
+        torch.FloatTensor(y_test_all)
+    )
+
+    # Create data loaders with num_workers=0 initially
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=1024,
+        shuffle=True,
+        num_workers=5  # Set to 0 for debugging
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=1024,
+        shuffle=False,
+        num_workers=5  # Set to 0 for debugging
+    )
+
+    # Set up device
+    device = (
+        torch.device("mps") if torch.backends.mps.is_available()
+        else torch.device("cuda") if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
+    logger.info(f'Using device: {device}')
+
+    # Create and train model
+    model = StockPredictor().to(device)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    # Training loop
+    logger.info("Starting training...")
+    for epoch in range(50):
+        model.train()
+        total_loss = 0
+        batch_count = 0
+        
+        for batch_X, batch_y in train_loader:
+            batch_X = batch_X.to(device)
+            batch_y = batch_y.to(device)
+            
+            optimizer.zero_grad()
+            output = model(batch_X)
+            loss = criterion(output, batch_y)
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+            batch_count += 1
+        
+        avg_loss = total_loss / batch_count
+        logger.info(f'Epoch {epoch}, Average Loss: {avg_loss:.6f}')
+
+    # Add testing phase after training
+    logger.info("Starting testing phase...")
+    model.eval()
+    total_abs_error = 0
+    total_squared_error = 0
+    total_samples = 0
+    all_predictions = []
+    all_actuals = []
     
-    s3_client = boto3.client('s3')
-    bucket_name = os.environ['S3_BUCKET_NAME']
-    s3_key = 'models/model.pth'
-    s3_client.upload_fileobj(buffer, bucket_name, s3_key)
-    logger.info(f"Model successfully saved to s3://{bucket_name}/{s3_key}")
-except Exception as e:
-    logger.error(f"Error saving model to S3: {str(e)}")
+    with torch.no_grad():
+        for batch_X, batch_y in test_loader:
+            batch_X = batch_X.to(device)
+            batch_y = batch_y.to(device)
+            
+            predictions = model(batch_X)
+            
+            # Calculate absolute error for this batch
+            abs_error = torch.abs(predictions - batch_y)
+            squared_error = (predictions - batch_y) ** 2
+            
+            total_abs_error += abs_error.sum().item()
+            total_squared_error += squared_error.sum().item()
+            total_samples += batch_y.size(0)
+            
+            # Store predictions and actuals for additional analysis
+            all_predictions.extend(predictions.cpu().numpy())
+            all_actuals.extend(batch_y.cpu().numpy())
+    
+    # Calculate metrics
+    mae = total_abs_error / total_samples
+    mse = total_squared_error / total_samples
+    rmse = np.sqrt(mse)
+    
+    # Calculate R-squared
+    all_predictions = np.array(all_predictions)
+    all_actuals = np.array(all_actuals)
+    correlation_matrix = np.corrcoef(all_predictions.flatten(), all_actuals.flatten())
+    r_squared = correlation_matrix[0, 1] ** 2
+    
+    # Log results
+    logger.info("\nTest Results:")
+    logger.info(f"Mean Absolute Error: {mae:.6f}")
+    logger.info(f"Mean Squared Error: {mse:.6f}")
+    logger.info(f"Root Mean Squared Error: {rmse:.6f}")
+    logger.info(f"R-squared: {r_squared:.6f}")
+    
+    # Show some sample predictions
+    logger.info("\nSample Predictions vs Actuals:")
+    for i in range(min(5, len(all_predictions))):
+        logger.info(f"Predicted: {all_predictions[i][0]:.6f}, Actual: {all_actuals[i][0]:.6f}, "
+                   f"Absolute Error: {abs(all_predictions[i][0] - all_actuals[i][0]):.6f}")
+    
+    # Calculate and display error distribution
+    errors = np.abs(all_predictions - all_actuals)
+    logger.info("\nError Distribution:")
+    logger.info(f"Min Error: {np.min(errors):.6f}")
+    logger.info(f"Max Error: {np.max(errors):.6f}")
+    logger.info(f"Median Error: {np.median(errors):.6f}")
+    logger.info(f"25th Percentile: {np.percentile(errors, 25):.6f}")
+    logger.info(f"75th Percentile: {np.percentile(errors, 75):.6f}")
+    
+    # Calculate percentage of predictions within different error ranges
+    error_ranges = [0.001, 0.005, 0.01, 0.02, 0.05]
+    logger.info("\nPrediction Accuracy Ranges:")
+    for error_range in error_ranges:
+        within_range = np.mean(errors < error_range) * 100
+        logger.info(f"Predictions within {error_range:.3f} error: {within_range:.2f}%")
+
+    try:
+        # Save model and test metrics
+        buffer = io.BytesIO()
+        save_dict = {
+            'model_state': model.state_dict(),
+            'test_metrics': {
+                'mae': mae,
+                'mse': mse,
+                'rmse': rmse,
+                'r_squared': r_squared
+            }
+        }
+        torch.save(save_dict, buffer)
+        buffer.seek(0)
+        
+        s3_client = boto3.client('s3')
+        bucket_name = 'tradingmodelsahmed'
+        s3_key = 'models/model_with_metrics.pth'
+        s3_client.upload_fileobj(buffer, bucket_name, s3_key)
+        logger.info(f"\nModel and metrics successfully saved to s3://{bucket_name}/{s3_key}")
+    except Exception as e:
+        logger.error(f"Error saving model to S3: {str(e)}")
 
 logger.info("Process completed successfully")
