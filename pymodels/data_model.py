@@ -304,52 +304,10 @@ class DataModel:
         return merged_data
 
 
-    
-    
-
-# # Preprocessing function
-# def preprocess_data(df):
-#     logger.debug("Starting data preprocessing")
-#     # Add return and month columns
-
-#     # Scale data
-#     scaler = StandardScaler()
-#     # scaled_data = scaler.fit_transform(df[['Return', 'Month']])
-#     # scaled_data = scaler.fit_transform(df[['Return', 'Month', 'Lagged_Return_1', 'Lagged_Return_2', 'Lagged_Return_3', '30_day_avg_return', '7_day_avg_return', 
-#     # '30_day_min_return', '30_day_max_return', 'RSI', 'Volume', 'OBV']])
-#     scaled_data = scaler.fit_transform(
-#         df[[
-#         'Return','Lagged_Return_1', 'Lagged_Return_2', 'Lagged_Return_3', 
-#         'Lagged_Return_4', 'Lagged_Return_5', 'Lagged_Return_6', 'Lagged_Return_7',
-#         'RSI', 'OBV',
-#         'Is_January', 'Is_February', 'Is_March', 'Is_April', 'Is_May', 
-#         'Is_June', 'Is_July', 'Is_August', 'Is_September', 
-#         'Is_October', 'Is_November', 'Is_December',
-#         'Is_Monday', 'Is_Tuesday', 'Is_Wednesday', 'Is_Thursday', 'Is_Friday',
-#         'Is_2020', 'Is_2019', 'Is_2018', 'Is_2017', 'Is_2016', 'Is_2015', 'Is_2014', 'Is_2021', 'Is_2022', 'Is_2023', 'Is_2024',
-#         'Random'
-#         ]]
-#     )
-#     scaled_data_Y = np.array(df[['Next_Day_Return', 'Next_7_Day_Return_StdDev']])
-
-#     # Prepare sequences
-#     X, y = [], []
-#     DAYS_LOOKBACK = 1
-#     for i in range(DAYS_LOOKBACK, len(scaled_data) - DAYS_LOOKBACK):
-#         X.append(scaled_data[i-DAYS_LOOKBACK:i])
-#         y.append(scaled_data_Y[i])
-    
-#     # Log data statistics for both outputs
-#     logger.info(f"Target statistics:")
-#     logger.info(f"Return - Mean: {np.mean(scaled_data_Y[:, 0]):.4f}, Std: {np.std(scaled_data_Y[:, 0]):.4f}")
-#     logger.info(f"StdDev - Mean: {np.mean(scaled_data_Y[:, 1]):.4f}, Std: {np.std(scaled_data_Y[:, 1]):.4f}")
-    
-#     return np.array(X), np.array(y)  # y will now be (n_samples, 2)
 
 
 
-
-DATA_FOLDER = "../data/"
+DATA_FOLDER = "./data/"
 TRAIN_SIZE_SPLIT = 0.9
 
 # Wrap the main execution code

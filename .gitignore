@@ -7,3 +7,7 @@ iter-AI.py
 # Model reports
 model_reports/
 *.html
+
+# Data directory
+data/
+data/*
