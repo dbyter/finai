@@ -1,0 +1,31 @@
+config: !!python/object:pymodels.config.ModelConfig
+  BATCH_SIZE: 1024
+  DEPENDENT_VARIABLES:
+  - Next_Day_Return
+  - Next_7_Day_Return
+  - Next_7_Day_Return_StdDev
+  DROPOUT_RATE: 0.2
+  FEATURES:
+  - Return
+  - Volume
+  - Is_2020
+  - Is_2021
+  - Is_2022
+  - Is_2023
+  - Is_2024
+  - Is_2025
+  LEARNING_RATE: 0.05
+  NUM_EPOCHS: 50
+  S3_BUCKET: tradingmodelsahmed
+  S3_MODEL_KEY: models/model_with_metrics.pth
+  TEST_END_DATE: '2025-12-31'
+  TEST_START_DATE: '2025-01-01'
+  TFT_ATTENTION_HEADS: 4
+  TFT_DROPOUT: 0.1
+  TFT_HIDDEN_CONTINUOUS_SIZE: 8
+  TFT_HIDDEN_SIZE: 16
+  TFT_LEARNING_RATE: 0.03
+  TICKERS:
+  - AAPL
+  TRAIN_END_DATE: '2024-12-31'
+  TRAIN_START_DATE: '2015-01-01'
