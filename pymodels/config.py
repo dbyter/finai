@@ -40,7 +40,7 @@ class ModelConfig:
     
     # Model parameters
     BATCH_SIZE: int = 1024
-    NUM_EPOCHS: int = 10
+    NUM_EPOCHS: int = 300
     LEARNING_RATE: float = 0.0003
     DROPOUT_RATE: float = 0.2
     
