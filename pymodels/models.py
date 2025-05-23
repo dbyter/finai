@@ -92,7 +92,7 @@ class ModelTrainer:
     def __init__(self, config, device):
         self.config = config
         self.device = device
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.HuberLoss()
     
     def train_basic_model(self, model: StockPredictor, train_loader: torch.utils.data.DataLoader) -> Dict[str, List[float]]:
         """Train the basic model"""
@@ -101,6 +101,7 @@ class ModelTrainer:
         losses = {var: [] for var in self.config.DEPENDENT_VARIABLES}
         
         for epoch in range(self.config.NUM_EPOCHS):
+            print (f"Training percentage complete: {epoch / self.config.NUM_EPOCHS * 100:.2f}%, # of epochs: {epoch}")
             total_losses = {var: 0 for var in self.config.DEPENDENT_VARIABLES}
             batch_count = 0
             
@@ -108,13 +109,6 @@ class ModelTrainer:
                 batch_X = batch_X.to(self.device)
                 batch_y = batch_y.to(self.device)
 
-                # TARGET_COL = 0        # index of the feature where you believe the return lives
-                                    # (use the positive index if easier)
-                # logger.info(f"batch_X[0]: {batch_X[0, :, :].shape}")
-                # logger.info(f"batch_y[0]: {batch_y[0].shape}")
-                # compare every element of that feature across the 7 steps with batch_y
-                # diff = (batch_X[:, -1, TARGET_COL] - batch_y.unsqueeze(1)).abs().max()
-                # print("max |x - y| :", diff.item())
                 optimizer.zero_grad()
                 # logger.info (f"Batch X shape: {batch_X.shape}")
                 # logger.info (f"Batch X[0, :, :] shape: {batch_X[0, :, :].unsqueeze(0).shape}")
@@ -136,24 +130,44 @@ class ModelTrainer:
                 for p in model.parameters():
                     if p.grad is not None:
                         total_grad_norm += p.grad.norm().item()
-                print(f"grad-norm: {total_grad_norm:.5f}")
                 optimizer.step()
                 batch_count += 1
             
             # Log epoch losses
-            for var_name in self.config.DEPENDENT_VARIABLES:
-                avg_loss = total_losses[var_name] / batch_count
-                losses[var_name].append(avg_loss)
-                logger.info(f'Epoch {epoch} - {var_name} Loss: {avg_loss:.6f}')
+            # for var_name in self.config.DEPENDENT_VARIABLES:
+            #     avg_loss = total_losses[var_name] / batch_count
+            #     losses[var_name].append(avg_loss)
+            #     logger.info(f'Epoch {epoch} - {var_name} Loss: {avg_loss:.6f}')
         
         return losses
     
-    def evaluate_basic_model(self, model: StockPredictor, test_loader: torch.utils.data.DataLoader) -> Dict[str, Dict]:
+    def evaluate_basic_model(self, model: StockPredictor, test_loader: torch.utils.data.DataLoader, train_loader: torch.utils.data.DataLoader = None) -> Dict[str, Dict]:
         """Evaluate the basic model and generate HTML report"""
         model.eval()
-        metrics = {var: {'predictions': [], 'actuals': [], 'mae': 0, 'rmse': 0} 
-                  for var in self.config.DEPENDENT_VARIABLES}
+        metrics = {
+            'train': {var: {'predictions': [], 'actuals': [], 'mae': 0, 'rmse': 0} 
+                     for var in self.config.DEPENDENT_VARIABLES},
+            'test': {var: {'predictions': [], 'actuals': [], 'mae': 0, 'rmse': 0} 
+                    for var in self.config.DEPENDENT_VARIABLES}
+        }
         
+        # Evaluate on training data if loader is provided
+        if train_loader is not None:
+            with torch.no_grad():
+                for batch_X, batch_y in train_loader:
+                    batch_X = batch_X.to(self.device)
+                    batch_y = batch_y.to(self.device)
+                    
+                    predictions = model(batch_X)
+                    
+                    for i, var_name in enumerate(self.config.DEPENDENT_VARIABLES):
+                        pred = predictions[:, i]
+                        actual = batch_y[:, i]
+                        
+                        metrics['train'][var_name]['predictions'].extend(pred.cpu().numpy())
+                        metrics['train'][var_name]['actuals'].extend(actual.cpu().numpy())
+        
+        # Evaluate on test data
         with torch.no_grad():
             for batch_X, batch_y in test_loader:
                 batch_X = batch_X.to(self.device)
@@ -165,16 +179,20 @@ class ModelTrainer:
                     pred = predictions[:, i]
                     actual = batch_y[:, i]
                     
-                    metrics[var_name]['predictions'].extend(pred.cpu().numpy())
-                    metrics[var_name]['actuals'].extend(actual.cpu().numpy())
+                    metrics['test'][var_name]['predictions'].extend(pred.cpu().numpy())
+                    metrics['test'][var_name]['actuals'].extend(actual.cpu().numpy())
         
-        # Calculate final metrics
-        for var_name in self.config.DEPENDENT_VARIABLES:
-            pred = torch.tensor(metrics[var_name]['predictions'])
-            actual = torch.tensor(metrics[var_name]['actuals'])
-            
-            metrics[var_name]['mae'] = torch.abs(pred - actual).mean().item()
-            metrics[var_name]['rmse'] = torch.sqrt(torch.mean((pred - actual) ** 2)).item()
+        # Calculate final metrics for both train and test
+        for split in ['train', 'test']:
+            if split == 'train' and train_loader is None:
+                continue
+                
+            for var_name in self.config.DEPENDENT_VARIABLES:
+                pred = torch.tensor(metrics[split][var_name]['predictions'])
+                actual = torch.tensor(metrics[split][var_name]['actuals'])
+                
+                metrics[split][var_name]['mae'] = torch.abs(pred - actual).mean().item()
+                metrics[split][var_name]['rmse'] = torch.sqrt(torch.mean((pred - actual) ** 2)).item()
         
         # Create HTML report
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -208,6 +226,8 @@ class ModelTrainer:
                     text-align: left;
                 }}
                 th {{ background-color: #f2f2f2; }}
+                .train-metrics {{ background-color: #e6f3ff; }}
+                .test-metrics {{ background-color: #fff0f0; }}
             </style>
         </head>
         <body>
@@ -221,17 +241,28 @@ class ModelTrainer:
             <table>
                 <tr>
                     <th>Variable</th>
+                    <th>Split</th>
                     <th>MAE</th>
                     <th>RMSE</th>
                 </tr>
         """
         
         for var_name in self.config.DEPENDENT_VARIABLES:
+            if train_loader is not None:
+                html_content += f"""
+                    <tr class="train-metrics">
+                        <td>{var_name}</td>
+                        <td>Train</td>
+                        <td>{metrics['train'][var_name]['mae']:.4f}</td>
+                        <td>{metrics['train'][var_name]['rmse']:.4f}</td>
+                    </tr>
+                """
             html_content += f"""
-                <tr>
+                <tr class="test-metrics">
                     <td>{var_name}</td>
-                    <td>{metrics[var_name]['mae']:.4f}</td>
-                    <td>{metrics[var_name]['rmse']:.4f}</td>
+                    <td>Test</td>
+                    <td>{metrics['test'][var_name]['mae']:.4f}</td>
+                    <td>{metrics['test'][var_name]['rmse']:.4f}</td>
                 </tr>
             """
         
@@ -239,18 +270,32 @@ class ModelTrainer:
         
         # Create and save plots for each variable
         for var_name in self.config.DEPENDENT_VARIABLES:
-            # Create prediction vs actual plot
+            # Create prediction vs actual plot for test data
             fig = go.Figure()
             fig.add_trace(go.Scatter(
-                y=metrics[var_name]['actuals'],
-                name='Actual',
+                y=metrics['test'][var_name]['actuals'],
+                name='Actual (Test)',
                 line=dict(color='blue')
             ))
             fig.add_trace(go.Scatter(
-                y=metrics[var_name]['predictions'],
-                name='Predicted',
+                y=metrics['test'][var_name]['predictions'],
+                name='Predicted (Test)',
                 line=dict(color='red')
             ))
+            
+            # Add training data if available
+            if train_loader is not None:
+                fig.add_trace(go.Scatter(
+                    y=metrics['train'][var_name]['actuals'],
+                    name='Actual (Train)',
+                    line=dict(color='green', dash='dot')
+                ))
+                fig.add_trace(go.Scatter(
+                    y=metrics['train'][var_name]['predictions'],
+                    name='Predicted (Train)',
+                    line=dict(color='orange', dash='dot')
+                ))
+            
             fig.update_layout(
                 title=f'{var_name} - Predictions vs Actuals',
                 xaxis_title='Time Steps',
@@ -258,16 +303,27 @@ class ModelTrainer:
                 showlegend=True
             )
             
-            # Create scatter plot
+            # Create scatter plot for test data
             scatter_fig = px.scatter(
-                x=metrics[var_name]['actuals'],
-                y=metrics[var_name]['predictions'],
+                x=metrics['test'][var_name]['actuals'],
+                y=metrics['test'][var_name]['predictions'],
                 labels={'x': 'Actual', 'y': 'Predicted'},
-                title=f'{var_name} - Actual vs Predicted Scatter Plot'
+                title=f'{var_name} - Actual vs Predicted Scatter Plot (Test)'
             )
+            
+            # Add training data to scatter plot if available
+            if train_loader is not None:
+                scatter_fig.add_trace(go.Scatter(
+                    x=metrics['train'][var_name]['actuals'],
+                    y=metrics['train'][var_name]['predictions'],
+                    mode='markers',
+                    name='Train',
+                    marker=dict(color='green', opacity=0.5)
+                ))
+            
             scatter_fig.add_trace(go.Scatter(
-                x=[min(metrics[var_name]['actuals']), max(metrics[var_name]['actuals'])],
-                y=[min(metrics[var_name]['actuals']), max(metrics[var_name]['actuals'])],
+                x=[min(metrics['test'][var_name]['actuals']), max(metrics['test'][var_name]['actuals'])],
+                y=[min(metrics['test'][var_name]['actuals']), max(metrics['test'][var_name]['actuals'])],
                 mode='lines',
                 name='Perfect Prediction',
                 line=dict(color='gray', dash='dash')

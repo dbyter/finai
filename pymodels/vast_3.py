@@ -35,11 +35,11 @@ def main():
     d = DataModel(use_cache=True)
     all_data = d.get_data()
     # all_data['AAPL'].to_csv('test.csv')
-    # combined_df = pd.concat(all_data.values(), ignore_index=True)
+    combined_df = pd.concat(all_data.values(), ignore_index=True)
     
     # Filter data for specified tickers
-    all_data = {k: v for k, v in all_data.items() if k in config.TICKERS}
-    combined_df = pd.concat(all_data.values(), ignore_index=True)
+    # all_data = {k: v for k, v in all_data.items() if k in config.TICKERS}
+    # combined_df = pd.concat(all_data.values(), ignore_index=True)
     # logger.info(f"Filtered tickers: {list(all_data.keys())}")
     
     # Initialize data processor
@@ -67,9 +67,11 @@ def main():
     # plot_training_losses(losses, config)
     
     # Evaluate basic model
-    metrics = trainer.evaluate_basic_model(basic_model, test_loader)
+    metrics = trainer.evaluate_basic_model(basic_model, test_loader, train_loader)
     for var_name in config.DEPENDENT_VARIABLES:
-        logger.info(f"Loss for {var_name}: {var_name} MAE: {metrics[var_name]['mae']}, RMSE: {metrics[var_name]['rmse']}")
+        logger.info(f"Loss for {var_name}:")
+        logger.info(f"Train - MAE: {metrics['train'][var_name]['mae']:.4f}, RMSE: {metrics['train'][var_name]['rmse']:.4f}")
+        logger.info(f"Test  - MAE: {metrics['test'][var_name]['mae']:.4f}, RMSE: {metrics['test'][var_name]['rmse']:.4f}")
     # plot_predictions(metrics, config)
     
     # Save basic model
