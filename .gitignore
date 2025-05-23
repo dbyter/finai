@@ -3,3 +3,7 @@ venv/
 __pycache__/
 *.pyc
 iter-AI.py
+
+# Model reports
+model_reports/
+*.html
