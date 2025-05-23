@@ -34,7 +34,8 @@ def main():
     logger.info("Loading data from cache")
     d = DataModel(use_cache=True)
     all_data = d.get_data()
-    # high_value_tickers =  (list(set([ticker for ticker, values in all_data.items() if values['ebitda'].mean() > 1e9])))
+    high_value_tickers =  (list(set([ticker for ticker, values in all_data.items() if values['ebitda'].mean() > 1e10])))
+    print (high_value_tickers)
     useful_columns = config.FEATURES + config.DEPENDENT_VARIABLES + config.HOT_ENCODING_FEATURES + ['Date', 'total_assets', 'ticker', 'total_liabilities']
     limit_features_df = [x[useful_columns] for x in all_data.values()]
     # all_data['AAPL'].to_csv('test.csv')
