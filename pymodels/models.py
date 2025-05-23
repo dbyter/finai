@@ -268,36 +268,23 @@ class ModelTrainer:
         
         html_content += "</table>"
         
-        # Create and save plots for each variable
+        # Create and save plots for test data only
         for var_name in self.config.DEPENDENT_VARIABLES:
             # Create prediction vs actual plot for test data
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 y=metrics['test'][var_name]['actuals'],
-                name='Actual (Test)',
+                name='Actual',
                 line=dict(color='blue')
             ))
             fig.add_trace(go.Scatter(
                 y=metrics['test'][var_name]['predictions'],
-                name='Predicted (Test)',
+                name='Predicted',
                 line=dict(color='red')
             ))
             
-            # Add training data if available
-            if train_loader is not None:
-                fig.add_trace(go.Scatter(
-                    y=metrics['train'][var_name]['actuals'],
-                    name='Actual (Train)',
-                    line=dict(color='green', dash='dot')
-                ))
-                fig.add_trace(go.Scatter(
-                    y=metrics['train'][var_name]['predictions'],
-                    name='Predicted (Train)',
-                    line=dict(color='orange', dash='dot')
-                ))
-            
             fig.update_layout(
-                title=f'{var_name} - Predictions vs Actuals',
+                title=f'{var_name} - Test Predictions vs Actuals',
                 xaxis_title='Time Steps',
                 yaxis_title='Value',
                 showlegend=True
@@ -308,18 +295,8 @@ class ModelTrainer:
                 x=metrics['test'][var_name]['actuals'],
                 y=metrics['test'][var_name]['predictions'],
                 labels={'x': 'Actual', 'y': 'Predicted'},
-                title=f'{var_name} - Actual vs Predicted Scatter Plot (Test)'
+                title=f'{var_name} - Test Actual vs Predicted Scatter Plot'
             )
-            
-            # Add training data to scatter plot if available
-            if train_loader is not None:
-                scatter_fig.add_trace(go.Scatter(
-                    x=metrics['train'][var_name]['actuals'],
-                    y=metrics['train'][var_name]['predictions'],
-                    mode='markers',
-                    name='Train',
-                    marker=dict(color='green', opacity=0.5)
-                ))
             
             scatter_fig.add_trace(go.Scatter(
                 x=[min(metrics['test'][var_name]['actuals']), max(metrics['test'][var_name]['actuals'])],
@@ -332,7 +309,7 @@ class ModelTrainer:
             # Add plots to HTML
             html_content += f"""
                 <div class="plot-container">
-                    <h2>{var_name} Analysis</h2>
+                    <h2>{var_name} Test Analysis</h2>
                     {fig.to_html(full_html=False)}
                     {scatter_fig.to_html(full_html=False)}
                 </div>

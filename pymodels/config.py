@@ -20,6 +20,10 @@ class ModelConfig:
         'RSI', 
         'cash', 
         'ebitda', 
+        'total_revenue', 
+        'gross_profit', 
+        'total_assets', 
+        'total_liabilities',
         'OBV', 
         '30_day_min', 
         '30_day_max', 
@@ -28,7 +32,7 @@ class ModelConfig:
         'EMA_20',
         'EMA_50',
         'EMA_100',
-        'EMA_200'
+        'EMA_200',
     ]
     HOT_ENCODING_FEATURES = ['Is_2020', 'Is_2021', 'Is_2022', 'Is_2023', 'Is_2024', 'Is_2025', 'Is_January', 'Is_February', 'Is_March', 'Is_April', 'Is_May', 'Is_June', 'Is_July', 'Is_August', 'Is_September', 'Is_October', 'Is_November', 'Is_December']
 
@@ -40,7 +44,7 @@ class ModelConfig:
     
     # Model parameters
     BATCH_SIZE: int = 1024
-    NUM_EPOCHS: int = 300
+    NUM_EPOCHS: int = 10
     LEARNING_RATE: float = 0.0003
     DROPOUT_RATE: float = 0.2
     
