@@ -34,14 +34,15 @@ def main():
     logger.info("Loading data from cache")
     d = DataModel(use_cache=True)
     all_data = d.get_data()
+    # high_value_tickers =  (list(set([ticker for ticker, values in all_data.items() if values['ebitda'].mean() > 1e9])))
     useful_columns = config.FEATURES + config.DEPENDENT_VARIABLES + config.HOT_ENCODING_FEATURES + ['Date', 'total_assets', 'ticker', 'total_liabilities']
     limit_features_df = [x[useful_columns] for x in all_data.values()]
     # all_data['AAPL'].to_csv('test.csv')
-    combined_df = pd.concat(limit_features_df, ignore_index=True)
+    # combined_df = pd.concat(limit_features_df, ignore_index=True)
     
     # Filter data for specified tickers
-    # all_data = {k: v for k, v in all_data.items() if k in config.TICKERS}
-    # combined_df = pd.concat(all_data.values(), ignore_index=True)
+    all_data = {k: v for k, v in all_data.items() if k in config.TICKERS}
+    combined_df = pd.concat(all_data.values(), ignore_index=True)
     # logger.info(f"Filtered tickers: {list(all_data.keys())}")
     
     # Initialize data processor
