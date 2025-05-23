@@ -180,60 +180,100 @@ class DataProcessor:
         
         # Process each ticker separately
         for ticker in unique_tickers:
-            ticker_mask = df['ticker'] == ticker
+            # Get data for this ticker
+            ticker_data = df[df['ticker'] == ticker]
             
+            # Skip if no data for this ticker
+            if len(ticker_data) == 0:
+                logger.warning(f"No data found for ticker {ticker}, skipping...")
+                continue
+                
+            # Split ticker data into train and test
+            ticker_train = ticker_data[train_mask]
+            ticker_test = ticker_data[test_mask]
+            
+            # Skip if no training data
+            if len(ticker_train) == 0:
+                logger.warning(f"No training data found for ticker {ticker}, skipping...")
+                continue
+                
             # Create scalers for this ticker
             feature_scalers[ticker] = StandardScaler()
             target_scalers[ticker] = StandardScaler()
             
             # Get features and targets for this ticker
-            ticker_features = df[ticker_mask][self.config.FEATURES]
-            ticker_targets = df[ticker_mask][self.config.DEPENDENT_VARIABLES]
+            ticker_train_features = ticker_train[self.config.FEATURES]
+            ticker_train_targets = ticker_train[self.config.DEPENDENT_VARIABLES]
             
-            # Scale features and targets for this ticker
-            ticker_train_x = feature_scalers[ticker].fit_transform(
-                ticker_features[ticker_mask & train_mask]
-            )
-            ticker_test_x = feature_scalers[ticker].transform(
-                ticker_features[ticker_mask & test_mask]
-            )
-            ticker_train_y = target_scalers[ticker].fit_transform(
-                ticker_targets[ticker_mask & train_mask]
-            )
-            ticker_test_y = target_scalers[ticker].transform(
-                ticker_targets[ticker_mask & test_mask]
-            )
+            # Scale training data
+            ticker_train_x = feature_scalers[ticker].fit_transform(ticker_train_features)
+            ticker_train_y = target_scalers[ticker].fit_transform(ticker_train_targets)
             
-            # Get hot encoding columns for this ticker
-            ticker_hot_encoding = df[ticker_mask][ticker_dummies.columns]
-
-            # Get other hot encoding columns
-            other_hot_encoding = df[ticker_mask][self.config.HOT_ENCODING_FEATURES]
+            # Get hot encoding columns
+            ticker_hot_encoding = ticker_data[ticker_dummies.columns]
+            other_hot_encoding = ticker_data[self.config.HOT_ENCODING_FEATURES]
             
-            # Combine scaled features with hot encoding
-            ticker_train_x = np.hstack([ticker_train_x, ticker_hot_encoding[ticker_mask & train_mask].values, other_hot_encoding[ticker_mask & train_mask].values])
-            ticker_test_x = np.hstack([ticker_test_x, ticker_hot_encoding[ticker_mask & test_mask].values, other_hot_encoding[ticker_mask & test_mask].values])
+            # Combine scaled features with hot encoding for training
+            ticker_train_x = np.hstack([
+                ticker_train_x,
+                ticker_hot_encoding[train_mask].values,
+                other_hot_encoding[train_mask].values
+            ])
             
-            # Append to lists
+            # Process test data if available
+            if len(ticker_test) > 0:
+                ticker_test_features = ticker_test[self.config.FEATURES]
+                ticker_test_targets = ticker_test[self.config.DEPENDENT_VARIABLES]
+                
+                ticker_test_x = feature_scalers[ticker].transform(ticker_test_features)
+                ticker_test_y = target_scalers[ticker].transform(ticker_test_targets)
+                
+                # Combine scaled features with hot encoding for testing
+                ticker_test_x = np.hstack([
+                    ticker_test_x,
+                    ticker_hot_encoding[test_mask].values,
+                    other_hot_encoding[test_mask].values
+                ])
+                
+                # Append test data
+                test_x_scaled_list.append(ticker_test_x)
+                test_y_scaled_list.append(ticker_test_y)
+            
+            # Append training data
             train_x_scaled_list.append(ticker_train_x)
-            test_x_scaled_list.append(ticker_test_x)
             train_y_scaled_list.append(ticker_train_y)
-            test_y_scaled_list.append(ticker_test_y)
+        
+        # Check if we have any data
+        if not train_x_scaled_list:
+            raise ValueError("No valid training data found for any ticker")
         
         # Combine all tickers' data
         train_x_scaled = np.vstack(train_x_scaled_list)
-        test_x_scaled = np.vstack(test_x_scaled_list)
         train_y_scaled = np.vstack(train_y_scaled_list)
-        test_y_scaled = np.vstack(test_y_scaled_list)
+        
+        # Combine test data if available
+        if test_x_scaled_list:
+            test_x_scaled = np.vstack(test_x_scaled_list)
+            test_y_scaled = np.vstack(test_y_scaled_list)
+        else:
+            logger.warning("No test data available for any ticker")
+            test_x_scaled = np.array([])
+            test_y_scaled = np.array([])
         
         # Create multi-step sequences
-        train_X, train_Y = lagged_sequences(train_x_scaled, train_y_scaled, 7, 0)
-        test_X, test_Y = lagged_sequences(test_x_scaled, test_y_scaled, 7, 0)
+        train_X, train_Y = lagged_sequences(train_x_scaled, train_y_scaled, self.config.LOOKBACK_WINDOW, 0)
+        
+        if len(test_x_scaled) > 0:
+            test_X, test_Y = lagged_sequences(test_x_scaled, test_y_scaled, self.config.LOOKBACK_WINDOW, 0)
+        else:
+            test_X = np.array([])
+            test_Y = np.array([])
         
         logger.info(f"Train X shape: {train_X.shape}")
         logger.info(f"Train Y shape: {train_Y.shape}")
-        logger.info(f"Test X shape: {test_X.shape}")
-        logger.info(f"Test Y shape: {test_Y.shape}")
+        if len(test_X) > 0:
+            logger.info(f"Test X shape: {test_X.shape}")
+            logger.info(f"Test Y shape: {test_Y.shape}")
         
         return train_X, test_X, train_Y, test_Y
 

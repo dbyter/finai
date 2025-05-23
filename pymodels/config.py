@@ -34,13 +34,12 @@ class ModelConfig:
 
     DEPENDENT_VARIABLES = ['Next_Day_Return', 'Next_7_Day_Return', 'Next_14_Day_Return', 'Next_21_Day_Return', 'Next_28_Day_Return']
     LOOKBACK_WINDOW: int = 21
-    TICKERS = ['AAPL', 'MSFT', 'GOOG', 'TSLA', 'UNH', 'HUM']
-
+    TICKERS = ['AAPL', 'MSFT', 'GOOG', 'TSLA', 'UNH', 'HUM', 'NVDA', 'META', 'AMZN', 'JPM', 'NFLX', 'BAC', 'AXP', 'MA']
     FEATURE_COUNT = len(FEATURES) + len(TICKERS) + len(HOT_ENCODING_FEATURES)
     
     # Model parameters
     BATCH_SIZE: int = 1024
-    NUM_EPOCHS: int = 10
+    NUM_EPOCHS: int = 1
     LEARNING_RATE: float = 0.0003
     DROPOUT_RATE: float = 0.2
     

@@ -11,6 +11,8 @@ from plotly.subplots import make_subplots
 import plotly.express as px
 from datetime import datetime
 import os
+import boto3
+from botocore.exceptions import ClientError
 logger = logging.getLogger(__name__)
 
 class StockPredictor(nn.Module):
@@ -44,15 +46,15 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        x = x #+ self.pe[:, :x.size(1), :]
+        x = x + self.pe[:, :x.size(1), :]
         return x
 
 class TransformerModel(nn.Module):
-    def __init__(self, n_features, n_dependent_variables, d_model):
+    def __init__(self, n_features, n_dependent_variables, d_model, lookback_window = 21):
         super(TransformerModel, self).__init__()
         # Create an embedding layer
         self.input_projection = nn.Linear(n_features, d_model)
-        self.pos_encoder = PositionalEncoding(d_model)
+        self.pos_encoder = PositionalEncoding(d_model, max_len = lookback_window)
         # Create a transformer encoder
         encoder_layers = nn.TransformerEncoderLayer(d_model, nhead=8, dim_feedforward=d_model*4, dropout=0.3, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=3)
@@ -66,7 +68,7 @@ class TransformerModel(nn.Module):
     def forward(self, src):
 
         src = self.input_projection(src) # [batch_size, seq_len, d_model]
-        # src = self.pos_encoder(src)
+        src = self.pos_encoder(src)
         # src = src.permute(1, 0, 2)  # Transformer expects [seq_len, batch_size, d_model]
         output = self.transformer_encoder(src) # [batch_size, seq_len, d_model]
         seq_repr = output.mean(dim=1) # [batch_size, d_model]
@@ -286,12 +288,29 @@ class ModelTrainer:
         </html>
         """
         
-        # Save HTML report
+        # Save HTML report locally
         report_path = os.path.join(report_dir, f"model_report_{timestamp}.html")
         with open(report_path, 'w') as f:
             f.write(html_content)
         
-        logger.info(f"Model performance report saved to: {report_path}")
+        logger.info(f"Model performance report saved locally to: {report_path}")
+        
+        # Save HTML report to S3
+        try:
+            s3_client = boto3.client('s3')
+            s3_key = f'reports/model_report_{timestamp}.html'
+            
+            # Upload the HTML content directly to S3
+            s3_client.put_object(
+                Bucket=self.config.S3_BUCKET,
+                Key=s3_key,
+                Body=html_content,
+                ContentType='text/html'
+            )
+            
+            logger.info(f"Model performance report saved to S3: s3://{self.config.S3_BUCKET}/{s3_key}")
+        except ClientError as e:
+            logger.error(f"Failed to save report to S3: {str(e)}")
         
         return metrics
 
