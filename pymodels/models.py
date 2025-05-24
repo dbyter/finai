@@ -60,9 +60,9 @@ class TransformerModel(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=3)
         # Replace single output projection with two layers
         self.head = nn.Sequential(
-            nn.Linear(d_model, d_model),
+            nn.Linear(d_model, d_model//2),
             nn.GELU(),                    # smoother; leaves some gradient everywhere
-            nn.Linear(d_model, n_dependent_variables)
+            nn.Linear(d_model//2, n_dependent_variables)
         )
 
     def forward(self, src):
