@@ -5,8 +5,8 @@ from typing import List
 class ModelConfig:
     # Data parameters
     TRAIN_START_DATE: str = "2015-01-01"
-    TRAIN_END_DATE: str = "2024-12-31"
-    TEST_START_DATE: str = "2025-01-01"
+    TRAIN_END_DATE: str = "2024-07-01"
+    TEST_START_DATE: str = "2024-07-02"
     TEST_END_DATE: str = "2025-12-31"
     
     # Feature configuration
