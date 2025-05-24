@@ -352,14 +352,16 @@ class DataProcessor:
             train_dataset,
             batch_size=self.config.BATCH_SIZE,
             shuffle=True,
-            num_workers=10
+            num_workers=20,
+            pin_memory=True
         )
         
         test_loader = DataLoader(
             test_dataset,
             batch_size=self.config.BATCH_SIZE,
             shuffle=False,
-            num_workers=10
+            num_workers=20,
+            pin_memory=True
         )
         
         return train_loader, test_loader 
