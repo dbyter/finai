@@ -46,7 +46,7 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        x = x + self.pe[:, :x.size(1), :]
+        x = x #+ self.pe[:, :x.size(1), :]
         return x
 
 class TransformerModel(nn.Module):
@@ -60,9 +60,9 @@ class TransformerModel(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=3)
         # Replace single output projection with two layers
         self.head = nn.Sequential(
-            nn.Linear(d_model, d_model//2),
+            nn.Linear(d_model, d_model),
             nn.GELU(),                    # smoother; leaves some gradient everywhere
-            nn.Linear(d_model//2, n_dependent_variables)
+            nn.Linear(d_model, n_dependent_variables)
         )
 
     def forward(self, src):
@@ -80,6 +80,17 @@ class TransformerModel(nn.Module):
         # logger.info(f"seq_repr shape: {seq_repr.shape}") # [batch_size, d_model]
         return prediction
 
+class LSTMModel(nn.Module):
+    def __init__(self, n_features=10, seq_len=7, n_targets=4):
+        super().__init__()
+        self.lstm = nn.LSTM(input_size=n_features, hidden_size=64, num_layers=2, batch_first=True)
+        self.fc = nn.Linear(64, n_targets)
+    
+    def forward(self, x):
+        x, _ = self.lstm(x)
+        x = x[:, -1, :]
+        return self.fc(x)
+
 class LinearBaseline(nn.Module):
     def __init__(self, n_features=10, seq_len=7, n_targets=4):
         super().__init__()
@@ -92,7 +103,7 @@ class ModelTrainer:
     def __init__(self, config, device):
         self.config = config
         self.device = device
-        self.criterion = nn.HuberLoss()
+        self.criterion = nn.MSELoss()
     
     def train_basic_model(self, model: StockPredictor, train_loader: torch.utils.data.DataLoader) -> Dict[str, List[float]]:
         """Train the basic model"""
@@ -141,7 +152,7 @@ class ModelTrainer:
         
         return losses
     
-    def evaluate_basic_model(self, model: StockPredictor, test_loader: torch.utils.data.DataLoader, train_loader: torch.utils.data.DataLoader = None) -> Dict[str, Dict]:
+    def evaluate_basic_model(self, model: StockPredictor, test_loader: torch.utils.data.DataLoader, train_loader: torch.utils.data.DataLoader = None, training_losses: Dict[str, List[float]] = None) -> Dict[str, Dict]:
         """Evaluate the basic model and generate HTML report"""
         model.eval()
         metrics = {
@@ -159,6 +170,7 @@ class ModelTrainer:
                     batch_y = batch_y.to(self.device)
                     
                     predictions = model(batch_X)
+                    logger.info(f"Predictions shape: {predictions.shape}")
                     
                     for i, var_name in enumerate(self.config.DEPENDENT_VARIABLES):
                         pred = predictions[:, i]
@@ -188,8 +200,13 @@ class ModelTrainer:
                 continue
                 
             for var_name in self.config.DEPENDENT_VARIABLES:
+                logger.info(f"Calculating metrics for {var_name} in {split} split")
                 pred = torch.tensor(metrics[split][var_name]['predictions'])
                 actual = torch.tensor(metrics[split][var_name]['actuals'])
+
+                # Log percentiles of predicted and actual values
+                # logger.info(f"Percentiles for {var_name} in {split} split: {pred.quantile([0.05, 0.25, 0.5, 0.75, 0.95]).tolist()}")
+                # logger.info(f"Percentiles for {var_name} in {split} split: {actual.quantile([0.05, 0.25, 0.5, 0.75, 0.95]).tolist()}")
                 
                 metrics[split][var_name]['mae'] = torch.abs(pred - actual).mean().item()
                 metrics[split][var_name]['rmse'] = torch.sqrt(torch.mean((pred - actual) ** 2)).item()
@@ -267,6 +284,37 @@ class ModelTrainer:
             """
         
         html_content += "</table>"
+        
+        # Add training loss plots if available
+        if training_losses is not None:
+            html_content += """
+                <h2>Training Loss Over Time</h2>
+            """
+            # Create a single figure for all losses
+            loss_fig = go.Figure()
+            
+            # Add each variable's loss as a separate trace
+            for var_name in self.config.DEPENDENT_VARIABLES:
+                if var_name in training_losses:
+                    loss_fig.add_trace(go.Scatter(
+                        y=training_losses[var_name],
+                        name=f'{var_name} Loss',
+                        mode='lines'
+                    ))
+            
+            loss_fig.update_layout(
+                title='Training Loss Over Time for All Variables',
+                xaxis_title='Epoch',
+                yaxis_title='Loss',
+                showlegend=True,
+                hovermode='x unified'
+            )
+            
+            html_content += f"""
+                <div class="plot-container">
+                    {loss_fig.to_html(full_html=False)}
+                </div>
+            """
         
         # Create and save plots for test data only
         for var_name in self.config.DEPENDENT_VARIABLES:

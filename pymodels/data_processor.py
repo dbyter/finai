@@ -160,6 +160,9 @@ class DataProcessor:
         # Create hot encoding for tickers
         ticker_dummies = pd.get_dummies(df['ticker'], prefix='ticker')
         df = pd.concat([df, ticker_dummies], axis=1)
+
+        # outlier_masks = df['Return'].abs() > 0.2
+        # df = df[~outlier_masks]
         
         # Split data
         train_mask = df['Date'] < self.config.TRAIN_END_DATE
@@ -209,15 +212,24 @@ class DataProcessor:
             ticker_train_x = feature_scalers[ticker].fit_transform(ticker_train_features)
             ticker_train_y = target_scalers[ticker].fit_transform(ticker_train_targets)
             
-            # Get hot encoding columns
+            # Remove outliers based on target values (values > 3 standard deviations)
+            outlier_mask = np.abs(ticker_train_y) <= 3
+            outlier_mask = np.all(outlier_mask, axis=1)  # Keep only rows where all targets are within bounds
+            ticker_train_x = ticker_train_x[outlier_mask]
+            ticker_train_y = ticker_train_y[outlier_mask]
+            
+            # Get hot encoding columns and apply the same mask
             ticker_hot_encoding = ticker_data[ticker_dummies.columns]
             other_hot_encoding = ticker_data[self.config.HOT_ENCODING_FEATURES]
+            
+            # Apply outlier mask to hot encoding data
+            ticker_hot_encoding_filtered = ticker_hot_encoding[train_mask].values[outlier_mask]
             
             # Combine scaled features with hot encoding for training
             ticker_train_x = np.hstack([
                 ticker_train_x,
-                ticker_hot_encoding[train_mask].values,
-                other_hot_encoding[train_mask].values
+                ticker_hot_encoding_filtered,
+                # other_hot_encoding[train_mask].values[outlier_mask]
             ])
             
             # Process test data if available
@@ -228,11 +240,20 @@ class DataProcessor:
                 ticker_test_x = feature_scalers[ticker].transform(ticker_test_features)
                 ticker_test_y = target_scalers[ticker].transform(ticker_test_targets)
                 
+                # Remove outliers from test data based on target values
+                outlier_mask = np.abs(ticker_test_y) <= 3
+                outlier_mask = np.all(outlier_mask, axis=1)
+                ticker_test_x = ticker_test_x[outlier_mask]
+                ticker_test_y = ticker_test_y[outlier_mask]
+                
+                # Apply outlier mask to test hot encoding data
+                ticker_hot_encoding_test_filtered = ticker_hot_encoding[test_mask].values[outlier_mask]
+                
                 # Combine scaled features with hot encoding for testing
                 ticker_test_x = np.hstack([
                     ticker_test_x,
-                    ticker_hot_encoding[test_mask].values,
-                    other_hot_encoding[test_mask].values
+                    ticker_hot_encoding_test_filtered,
+                    # other_hot_encoding[test_mask].values[outlier_mask]
                 ])
                 
                 # Append test data
@@ -259,6 +280,7 @@ class DataProcessor:
             logger.warning("No test data available for any ticker")
             test_x_scaled = np.array([])
             test_y_scaled = np.array([])
+        
         
         # Create multi-step sequences
         train_X, train_Y = lagged_sequences(train_x_scaled, train_y_scaled, self.config.LOOKBACK_WINDOW, 0)
@@ -299,14 +321,16 @@ class DataProcessor:
             train_dataset,
             batch_size=self.config.BATCH_SIZE,
             shuffle=True,
-            num_workers=0,
+            num_workers=4,
+            pin_memory=True
         )
         
         test_loader = DataLoader(
             test_dataset,
             batch_size=self.config.BATCH_SIZE,
             shuffle=False,
-            num_workers=0,
+            num_workers=4,
+            pin_memory=True
         )
         
         return train_loader, test_loader 

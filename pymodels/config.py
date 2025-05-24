@@ -38,15 +38,13 @@ class ModelConfig:
 
     DEPENDENT_VARIABLES = ['Next_Day_Return', 'Next_7_Day_Return', 'Next_14_Day_Return', 'Next_21_Day_Return', 'Next_28_Day_Return']
     LOOKBACK_WINDOW: int = 21
-    # TICKERS =  ['PKX', 'RIO', 'TAK', 'NVO', 'CHT', 'EQNR', 'SONY', 'JPM', 'IX', 'BP', 'CMCSA', 'BABA', 
-    # 'ITUB', 'KOF', 'BCH', 'PRU', 'MUFG', 'AAPL', 'WFC', 'MFG', 'TLK', 'HDB', 'META', 'AMX', 'SHEL', 'WMT', 'XOM', 'KB', 
-    # 'FMX', 'ASX', 'PDD', 'CVX', 'RDY', 'BAC', 'EC', 'GOOG', 'PBR', 'TM', 'TSM', 'TTE', 'AMZN', 'IBN', 'YPF', 'BSAC', 'BBD', 'SMFG', 'MSFT', 'BSBR', 'SHG', 'BRK-A', 'HMC', 'WIT', 'UMC', 'VZ', 'T', 'NMR', 'KSPI']
-    TICKERS = ['AAPL']
-    FEATURE_COUNT = len(FEATURES) + len(TICKERS) + len(HOT_ENCODING_FEATURES)
+    TICKERS =  ['KB', 'VZ', 'MRK', 'ASX', 'RDY', 'TD', 'SAN', 'BTI', 'JPM', 'SHG', 'PRU', 'MS', 'CM', 'EBR', 'BSAC', 'WMT', 'V', 'WFC', 'ERIC', 'BRK-A', 'TTE', 'AMZN', 'STLA', 'WIT', 'GS', 'KSPI', 'GOOG', 'VALE', 'PEP', 'BHP', 'IBN', 'FMX', 'RIO', 'TMUS', 'JD', 'AAPL', 'SMFG', 'TAK', 'HDB', 'BIDU', 'CSCO', 'GM', 'TEF', 'E', 'RY', 'BMO', 'YPF', 'NVO', 'BUD', 'NMR', 'IX', 'PKX', 'CMCSA', 'COP', 'PDD', 'PFE', 'BP', 'NTES', 'ABBV', 'BCH', 'UNH', 'EQNR', 'PG', 'UL', 'ORCL', 'NFLX', 'CHTR', 'CVX', 'MUFG', 'JNJ', 'VIV', 'CHT', 'TLK', 'AVGO', 'EC', 'BABA', 'KOF', 'XOM', 'TM', 'HD', 'TSM', 'BAC', 'AMX', 'HSBC', 'NVS', 'SHEL', 'HMC', 'MFG', 'ITUB', 'BSBR', 'SONY', 'VOD', 'C', 'NVDA', 'UMC', 'T', 'INTC', 'ABEV', 'SUZ', 'PBR', 'BBD', 'META', 'DIS', 'MSFT']
+    # TICKERS = ['AAPL']
+    FEATURE_COUNT = len(FEATURES) + len(TICKERS) 
     
     # Model parameters
-    BATCH_SIZE: int = 2048
-    NUM_EPOCHS: int = 200
+    BATCH_SIZE: int = 500
+    NUM_EPOCHS: int = 1000
     LEARNING_RATE: float = 0.0003
     DROPOUT_RATE: float = 0.2
     
