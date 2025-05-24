@@ -28,8 +28,8 @@ class DataProcessor:
         missing_before = df.isnull().sum()
         
         # Calculate ratio only where both values are present
-        mask = df['total_assets'].notna() & df['total_liabilities'].notna()
-        df.loc[mask, 'assets_liabilities_ratio'] = df.loc[mask, 'total_assets'] / df.loc[mask, 'total_liabilities']
+        # mask = df['total_assets'].notna() & df['total_liabilities'].notna()
+        # df.loc[mask, 'assets_liabilities_ratio'] = df.loc[mask, 'total_assets'] / df.loc[mask, 'total_liabilities']
         
         # Calculate Return (daily return)
         df['Return'] = df['Close'].pct_change()
