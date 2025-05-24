@@ -56,7 +56,7 @@ class TransformerModel(nn.Module):
         self.input_projection = nn.Linear(n_features, d_model)
         self.pos_encoder = PositionalEncoding(d_model, max_len = lookback_window)
         # Create a transformer encoder
-        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead=8, dim_feedforward=d_model*4, dropout=0.3, batch_first=True)
+        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead=2, dim_feedforward=d_model*4, dropout=0.3, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=3)
         # Replace single output projection with two layers
         self.head = nn.Sequential(
