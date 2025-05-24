@@ -89,15 +89,19 @@ def create_lagged_sequence(scaled_data, original_data, lookback_window, config):
     scaled_sequence = scaled_data[-lookback_window:]
     original_sequence = original_data[-lookback_window:]
     
-    # Create hot encoding for the ticker
-    ticker = original_sequence['ticker'].iloc[0]
-    ticker_dummies = pd.get_dummies(original_sequence['ticker'], prefix='ticker')
+    # Create dummy variables for all tickers
+    ticker_dummies = np.zeros((lookback_window, len(config.TICKERS)))
+    current_ticker = original_sequence['ticker'].iloc[0]
+    ticker_idx = config.TICKERS.index(current_ticker)
+    ticker_dummies[:, ticker_idx] = 1
     
-    # Combine scaled features with hot encoding
-    hot_encoding = ticker_dummies.values
+    # Combine scaled features with ticker dummies
+    combined_features = np.hstack([scaled_sequence, ticker_dummies])
     
-    # Combine features and hot encoding
-    combined_features = np.hstack([scaled_sequence, hot_encoding])
+    # Ensure we have the correct number of features
+    expected_features = config.FEATURE_COUNT
+    if combined_features.shape[1] != expected_features:
+        raise ValueError(f"Feature count mismatch. Expected {expected_features}, got {combined_features.shape[1]}. Base features: {scaled_sequence.shape[1]}, Ticker dummies: {ticker_dummies.shape[1]}")
     
     return combined_features.reshape(1, lookback_window, -1)  # Reshape for model input
 
@@ -336,8 +340,8 @@ if __name__ == "__main__":
     config = ModelConfig()
     
     # Define paths
-    model_path = 'models/basic_model_20250524_092930.pth'
-    scaler_path = 'scalers/scalers_20250524_092931.pkl'
+    model_path = 'models/basic_model_20250524_172029.pth'
+    scaler_path = 'scalers/scalers_20250524_172051.pkl'
     
     # Load model and scalers
     model, feature_scalers, target_scalers, device = load_model_and_scalers(config.S3_BUCKET, model_path, scaler_path)
@@ -356,8 +360,12 @@ if __name__ == "__main__":
     
     # After preparation, ensure Date is datetime and set as index
     data['Date'] = pd.to_datetime(data['Date'])
+    
+    # Handle duplicate timestamps by keeping the last entry for each ticker-date combination
+    data = data.sort_values(['Date', 'ticker']).groupby(['Date', 'ticker']).last().reset_index()
     data.set_index('Date', inplace=True)
     
+    logger.info(f"Data shape after handling ticker-date duplicates: {data.shape}")
     # Run backtest
     results = backtest_portfolio(model, feature_scalers, target_scalers, data, config, device)
     
