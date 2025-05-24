@@ -101,7 +101,7 @@ class ModelTrainer:
         losses = {var: [] for var in self.config.DEPENDENT_VARIABLES}
         
         for epoch in range(self.config.NUM_EPOCHS):
-            print (f"Training percentage complete: {epoch / self.config.NUM_EPOCHS * 100:.2f}%, # of epochs: {epoch}")
+            print (f"Training percentage complete: {epoch / self.config.NUM_EPOCHS * 100:.2f}%, # of epochs: {epoch} out of {self.config.NUM_EPOCHS}")
             total_losses = {var: 0 for var in self.config.DEPENDENT_VARIABLES}
             batch_count = 0
             
