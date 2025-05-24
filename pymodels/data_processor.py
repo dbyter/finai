@@ -277,59 +277,6 @@ class DataProcessor:
         
         return train_X, test_X, train_Y, test_Y
 
-    def prepare_tft_data(self, df: pd.DataFrame, ticker: str) -> Tuple[TimeSeriesDataSet, DataLoader, DataLoader]:
-        """Prepare data for TFT model"""
-        df = df.copy()
-        df['time_idx'] = np.arange(len(df))
-        df['group'] = '0'  # Use string representation of group number
-        df['ticker'] = ticker  # Keep ticker information in a separate column
-        
-        # Split data
-        train_data = df[df['Date'] < self.config.TRAIN_END_DATE]
-        val_data = df[df['Date'] >= self.config.TRAIN_END_DATE]
-        
-        logger.info(f"TFT train data shape: {train_data.shape}")
-        logger.info(f"TFT validation data shape: {val_data.shape}")
-        
-        logger.info(f"Data types in train_data: {train_data.dtypes}")
-        logger.info(f"Data types in val_data: {val_data.dtypes}")
-        
-        logger.info(f"Training data head: {train_data.head()}")
-        df['group'] = df['group'].astype('category')  # Convert group to categorical type
-        
-        # Create TimeSeriesDataSet with MultiNormalizer
-        training = TimeSeriesDataSet(
-            train_data,
-            time_idx="time_idx",
-            target=self.config.DEPENDENT_VARIABLES,
-            group_ids=["group"],
-            min_encoder_length=7,
-            max_encoder_length=7,
-            min_prediction_length=1,
-            max_prediction_length=1,
-            static_categoricals=["group"],
-            time_varying_known_categoricals=[],
-            time_varying_known_reals=self.config.FEATURES,
-            time_varying_unknown_categoricals=[],
-            time_varying_unknown_reals=self.config.DEPENDENT_VARIABLES,
-            target_normalizer=MultiNormalizer(
-                [GroupNormalizer(groups=["group"], method="standard") for _ in self.config.DEPENDENT_VARIABLES]
-            ),
-            add_relative_time_idx=True,
-            add_target_scales=True,
-        )
-        
-        # Explicitly fit the normalizer if necessary
-        training.target_normalizer.fit(train_data[self.config.DEPENDENT_VARIABLES], train_data)
-        
-        validation = TimeSeriesDataSet.from_dataset(training, val_data, stop_randomization=True)
-        
-        # Create dataloaders
-        train_dataloader = training.to_dataloader(train=True, batch_size=self.config.BATCH_SIZE, num_workers=5)
-        val_dataloader = validation.to_dataloader(train=False, batch_size=self.config.BATCH_SIZE, num_workers=5)
-        
-        return training, train_dataloader, val_dataloader
-    
     def create_dataloaders(self, X_train: np.ndarray, y_train: np.ndarray, 
                           X_test: np.ndarray, y_test: np.ndarray) -> Tuple[DataLoader, DataLoader]:
         """Create PyTorch dataloaders for the basic model"""
@@ -352,14 +299,14 @@ class DataProcessor:
             train_dataset,
             batch_size=self.config.BATCH_SIZE,
             shuffle=True,
-            num_workers=20,
+            num_workers=0,
         )
         
         test_loader = DataLoader(
             test_dataset,
             batch_size=self.config.BATCH_SIZE,
             shuffle=False,
-            num_workers=20,
+            num_workers=0,
         )
         
         return train_loader, test_loader 

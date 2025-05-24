@@ -38,15 +38,15 @@ class ModelConfig:
 
     DEPENDENT_VARIABLES = ['Next_Day_Return', 'Next_7_Day_Return', 'Next_14_Day_Return', 'Next_21_Day_Return', 'Next_28_Day_Return']
     LOOKBACK_WINDOW: int = 21
-    TICKERS =  ['PKX', 'RIO', 'TAK', 'NVO', 'CHT', 'EQNR', 'SONY', 'JPM', 'IX', 'BP', 'CMCSA', 'BABA', 
-    'ITUB', 'KOF', 'BCH', 'PRU', 'MUFG', 'AAPL', 'WFC', 'MFG', 'TLK', 'HDB', 'META', 'AMX', 'SHEL', 'WMT', 'XOM', 'KB', 
-    'FMX', 'ASX', 'PDD', 'CVX', 'RDY', 'BAC', 'EC', 'GOOG', 'PBR', 'TM', 'TSM', 'TTE', 'AMZN', 'IBN', 'YPF', 'BSAC', 'BBD', 'SMFG', 'MSFT', 'BSBR', 'SHG', 'BRK-A', 'HMC', 'WIT', 'UMC', 'VZ', 'T', 'NMR', 'KSPI']
-
+    # TICKERS =  ['PKX', 'RIO', 'TAK', 'NVO', 'CHT', 'EQNR', 'SONY', 'JPM', 'IX', 'BP', 'CMCSA', 'BABA', 
+    # 'ITUB', 'KOF', 'BCH', 'PRU', 'MUFG', 'AAPL', 'WFC', 'MFG', 'TLK', 'HDB', 'META', 'AMX', 'SHEL', 'WMT', 'XOM', 'KB', 
+    # 'FMX', 'ASX', 'PDD', 'CVX', 'RDY', 'BAC', 'EC', 'GOOG', 'PBR', 'TM', 'TSM', 'TTE', 'AMZN', 'IBN', 'YPF', 'BSAC', 'BBD', 'SMFG', 'MSFT', 'BSBR', 'SHG', 'BRK-A', 'HMC', 'WIT', 'UMC', 'VZ', 'T', 'NMR', 'KSPI']
+    TICKERS = ['AAPL']
     FEATURE_COUNT = len(FEATURES) + len(TICKERS) + len(HOT_ENCODING_FEATURES)
     
     # Model parameters
     BATCH_SIZE: int = 2048
-    NUM_EPOCHS: int = 1000
+    NUM_EPOCHS: int = 200
     LEARNING_RATE: float = 0.0003
     DROPOUT_RATE: float = 0.2
     

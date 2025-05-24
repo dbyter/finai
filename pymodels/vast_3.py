@@ -62,7 +62,8 @@ def main():
     )
 
     logger.info(f"\nTraining basic model...")
-    basic_model = TransformerModel(config.FEATURE_COUNT, len(config.DEPENDENT_VARIABLES), 32).to(device)
+    # basic_model = TransformerModel(config.FEATURE_COUNT, len(config.DEPENDENT_VARIABLES), 32).to(device)
+    basic_model = LinearBaseline(config.FEATURE_COUNT, config.LOOKBACK_WINDOW, len(config.DEPENDENT_VARIABLES)).to(device)
 
     total_params = sum(p.numel() for p in basic_model.parameters())
     trainable_params = sum(p.numel() for p in basic_model.parameters() if p.requires_grad)

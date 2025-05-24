@@ -81,11 +81,11 @@ class TransformerModel(nn.Module):
         return prediction
 
 class LinearBaseline(nn.Module):
-    def __init__(self, n_features=10, seq_len=7, n_targets=1):
+    def __init__(self, n_features=10, seq_len=7, n_targets=4):
         super().__init__()
         self.fc = nn.Linear(seq_len * n_features, n_targets)
 
-    def forward(self, x):           # [B, 7, 10]
+    def forward(self, x):           # [B, seq_len, n_targets]
         return self.fc(x.flatten(1))
 
 class ModelTrainer:
@@ -134,10 +134,10 @@ class ModelTrainer:
                 batch_count += 1
             
             # Log epoch losses
-            # for var_name in self.config.DEPENDENT_VARIABLES:
-            #     avg_loss = total_losses[var_name] / batch_count
-            #     losses[var_name].append(avg_loss)
-            #     logger.info(f'Epoch {epoch} - {var_name} Loss: {avg_loss:.6f}')
+            for var_name in self.config.DEPENDENT_VARIABLES:
+                avg_loss = total_losses[var_name] / batch_count
+                losses[var_name].append(avg_loss)
+                logger.info(f'Epoch {epoch} - Loss for {var_name}: {avg_loss:.6f}')
         
         return losses
     
@@ -346,52 +346,3 @@ class ModelTrainer:
             logger.error(f"Failed to save report to S3: {str(e)}")
         
         return metrics
-
-class TFTModel(pl.LightningModule):
-    def __init__(self, config, training_dataset):
-        super().__init__()
-        self.config = config
-        self.save_hyperparameters(ignore=["training_dataset"])
-
-        self.model = TemporalFusionTransformer.from_dataset(
-            training_dataset,
-            learning_rate        = config.TFT_LEARNING_RATE,
-            hidden_size          = config.TFT_HIDDEN_SIZE,
-            attention_head_size  = config.TFT_ATTENTION_HEADS,
-            dropout              = config.TFT_DROPOUT,
-            hidden_continuous_size = config.TFT_HIDDEN_CONTINUOUS_SIZE,
-            loss                 = QuantileLoss(),
-            log_interval         = 10,
-            reduce_on_plateau_patience = 4,
-        )
-
-    # let Lightning call this with x (and optionally y)
-    def forward(self, x):
-        return self.model(x)
-
-    # consolidated step for train / val / test
-    def _shared_step(self, batch, stage: str):
-        if len(batch) == 3:
-            x, y, weight = batch
-        else:
-            x, y        = batch
-            weight      = None
-
-        out   = self(x, y)        # ← x is the dict, y is tensor
-        loss  = out["loss"]       # already computed because we passed y
-        self.log(f"{stage}_loss", loss, prog_bar=True)
-
-        # extra metrics
-        preds = out["prediction"]
-        mae   = torch.mean(torch.abs(preds - y))
-        rmse  = torch.sqrt(torch.mean((preds - y) ** 2))
-        self.log(f"{stage}_mae",  mae,  prog_bar=True)
-        self.log(f"{stage}_rmse", rmse, prog_bar=True)
-        return loss
-
-    def training_step  (self, batch, batch_idx): return self._shared_step(batch, "train")
-    def validation_step(self, batch, batch_idx): return self._shared_step(batch, "val")
-
-    def configure_optimizers(self):
-        opt = torch.optim.Adam(self.parameters(), lr=self.config.TFT_LEARNING_RATE)
-        return {"optimizer": opt, "monitor": "val_loss"}
