@@ -36,7 +36,7 @@ class ModelConfig:
     ]
     HOT_ENCODING_FEATURES = ['Is_2020', 'Is_2021', 'Is_2022', 'Is_2023', 'Is_2024', 'Is_2025', 'Is_January', 'Is_February', 'Is_March', 'Is_April', 'Is_May', 'Is_June', 'Is_July', 'Is_August', 'Is_September', 'Is_October', 'Is_November', 'Is_December']
 
-    DEPENDENT_VARIABLES = ['Next_Day_Return', 'Next_7_Day_Return', 'Next_14_Day_Return', 'Next_21_Day_Return', 'Next_28_Day_Return']
+    DEPENDENT_VARIABLES = ['Next_Day_Return', 'Next_7_Day_Return', 'Next_14_Day_Return', 'Next_21_Day_Return', 'Next_28_Day_Return', 'Next_7_Day_Return_StdDev', 'Next_14_Day_Return_StdDev', 'Next_21_Day_Return_StdDev', 'Next_28_Day_Return_StdDev']
     LOOKBACK_WINDOW: int = 21
     TICKERS =  ['KB', 'VZ', 'MRK', 'ASX', 'RDY', 'TD', 'SAN', 'BTI', 'JPM', 'SHG', 'PRU', 'MS', 'CM', 'EBR', 'BSAC', 'WMT', 'V', 'WFC', 'ERIC', 'BRK-A', 'TTE', 'AMZN', 'STLA', 'WIT', 'GS', 'KSPI', 'GOOG', 'VALE', 'PEP', 'BHP', 'IBN', 'FMX', 'RIO', 'TMUS', 'JD', 'AAPL', 'SMFG', 'TAK', 'HDB', 'BIDU', 'CSCO', 'GM', 'TEF', 'E', 'RY', 'BMO', 'YPF', 'NVO', 'BUD', 'NMR', 'IX', 'PKX', 'CMCSA', 'COP', 'PDD', 'PFE', 'BP', 'NTES', 'ABBV', 'BCH', 'UNH', 'EQNR', 'PG', 'UL', 'ORCL', 'NFLX', 'CHTR', 'CVX', 'MUFG', 'JNJ', 'VIV', 'CHT', 'TLK', 'AVGO', 'EC', 'BABA', 'KOF', 'XOM', 'TM', 'HD', 'TSM', 'BAC', 'AMX', 'HSBC', 'NVS', 'SHEL', 'HMC', 'MFG', 'ITUB', 'BSBR', 'SONY', 'VOD', 'C', 'NVDA', 'UMC', 'T', 'INTC', 'ABEV', 'SUZ', 'PBR', 'BBD', 'META', 'DIS', 'MSFT']
     # TICKERS = ['AAPL']
@@ -44,7 +44,7 @@ class ModelConfig:
     
     # Model parameters
     BATCH_SIZE: int = 500
-    NUM_EPOCHS: int = 1000
+    NUM_EPOCHS: int = 500
     LEARNING_RATE: float = 0.0003
     DROPOUT_RATE: float = 0.2
     

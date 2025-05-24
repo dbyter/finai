@@ -4,7 +4,7 @@ from .data_model import DataModel
 from .config import ModelConfig
 from .data_processor import DataProcessor
 from .models import  ModelTrainer, TransformerModel, LinearBaseline, LSTMModel
-from .utils import plot_predictions, plot_training_losses, save_model_to_s3
+from .utils import save_model_to_s3, save_scalers_to_s3
 import traceback
 import torch.nn.functional as F          # <- add this line
 from datetime import datetime
@@ -51,7 +51,7 @@ def main():
     df = data_processor.prepare_data(combined_df)
     
     # Prepare data for basic model
-    X_train, X_test, y_train, y_test = data_processor.create_sequences_tft_with_ticker_scaling(df)
+    X_train, X_test, y_train, y_test, feature_scalers, target_scalers = data_processor.create_sequences_tft_with_ticker_scaling(df)
     
     if len(X_train) == 0 or len(X_test) == 0:
         logger.error(f"No data available after processing")
@@ -94,6 +94,9 @@ def main():
         config.S3_BUCKET,
         f'models/basic_model_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pth'
     )
+
+    # Save feature and target scalers
+    save_scalers_to_s3(feature_scalers, target_scalers, config.S3_BUCKET, f'scalers/scalers_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pkl')
     
 
 if __name__ == '__main__':

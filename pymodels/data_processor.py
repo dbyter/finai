@@ -21,6 +21,13 @@ class DataProcessor:
         logger.info(f"Original data shape: {df.shape}")
         df = df.copy()
         
+        # Ensure Date is datetime
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'])
+        elif df.index.name == 'Date':
+            df.index = pd.to_datetime(df.index)
+            df = df.reset_index()
+        
         # Log date range
         logger.info(f"Date range: {df['Date'].min()} to {df['Date'].max()}")
         
@@ -297,7 +304,7 @@ class DataProcessor:
             logger.info(f"Test X shape: {test_X.shape}")
             logger.info(f"Test Y shape: {test_Y.shape}")
         
-        return train_X, test_X, train_Y, test_Y
+        return train_X, test_X, train_Y, test_Y, feature_scalers, target_scalers
 
     def create_dataloaders(self, X_train: np.ndarray, y_train: np.ndarray, 
                           X_test: np.ndarray, y_test: np.ndarray) -> Tuple[DataLoader, DataLoader]:

@@ -4,7 +4,7 @@ import torch
 import matplotlib.pyplot as plt
 import logging
 from typing import Dict, Any
-
+import pickle
 logger = logging.getLogger(__name__)
 
 def save_model_to_s3(model_state: Dict[str, torch.Tensor], metrics: Dict[str, Any], 
@@ -25,6 +25,24 @@ def save_model_to_s3(model_state: Dict[str, torch.Tensor], metrics: Dict[str, An
         logger.info(f"Model and metrics successfully saved to s3://{bucket_name}/{s3_key}")
     except Exception as e:
         logger.error(f"Error saving model to S3: {str(e)}")
+        raise
+
+def save_scalers_to_s3(feature_scalers: Dict[str, Any], target_scalers: Dict[str, Any], bucket_name: str, s3_key: str) -> None:
+    """Save feature and target scalers to S3"""
+    try:
+        scalers_dict = {
+            'feature_scalers': feature_scalers,
+            'target_scalers': target_scalers
+        }
+        
+        buffer = io.BytesIO()
+        pickle.dump(scalers_dict, buffer)
+        buffer.seek(0)
+        s3_client = boto3.client('s3')
+        s3_client.upload_fileobj(buffer, bucket_name, s3_key)
+        logger.info(f"Scalers successfully saved to s3://{bucket_name}/{s3_key}")
+    except Exception as e:
+        logger.error(f"Error saving scalers to S3: {str(e)}")
         raise
 
 def plot_predictions(predictions: Dict[str, Dict], config) -> None:
