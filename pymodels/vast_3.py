@@ -32,7 +32,7 @@ def main():
     
     # Load data
     logger.info("Loading data from cache")
-    d = DataModel(use_cache=True)
+    d = DataModel(use_cache=False)
     all_data = d.get_data()
     high_value_tickers =  (list(set([ticker for ticker, values in all_data.items() if values['ebitda'].mean() > .5e10])))
     print (high_value_tickers)
