@@ -329,7 +329,7 @@ class DataProcessor:
             train_dataset,
             batch_size=self.config.BATCH_SIZE,
             shuffle=True,
-            num_workers=0,
+            num_workers=4,
             pin_memory=True
         )
         
