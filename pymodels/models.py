@@ -151,8 +151,8 @@ class ModelTrainer:
             batch_count = 0
             
             for batch_X, batch_y in train_loader:
-                batch_X = batch_X.to(self.device)
-                batch_y = batch_y.to(self.device)
+                batch_X = batch_X.to(self.device, non_blocking=True)
+                batch_y = batch_y.to(self.device, non_blocking=True)
 
                 optimizer.zero_grad()
                 # logger.info (f"Batch X shape: {batch_X.shape}")
