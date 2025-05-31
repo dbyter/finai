@@ -66,7 +66,7 @@ class ModelConfig:
     FEATURE_COUNT = len(FEATURES) + len(HOT_ENCODING_FEATURES) + len(TICKERS) 
     
     # Model parameters
-    BATCH_SIZE: int = 50
+    BATCH_SIZE: int = 1000
     NUM_EPOCHS: int = 400
     LEARNING_RATE: float = 0.001
     DROPOUT_RATE: float = 0.2
