@@ -3,7 +3,7 @@ import logging
 from .data_model import DataModel
 from .config import ModelConfig
 from .data_processor import DataProcessor
-from .models import  ModelTrainer, TransformerModel, LinearBaseline, LSTMModel
+from .models import  ModelTrainer, TransformerModel, LinearBaseline
 from .utils import save_model_to_s3, save_scalers_to_s3
 import traceback
 import torch.nn.functional as F          # <- add this line
@@ -34,7 +34,7 @@ def main():
     logger.info("Loading data from cache")
     d = DataModel(use_cache=False)
     all_data = d.get_data()
-    high_value_tickers =  (list(set([ticker for ticker, values in all_data.items() if values['ebitda'].mean() > .5e10])))
+    high_value_tickers =  (list(set([ticker for ticker, values in all_data.items() if values['total_revenue'].mean() > .5e10])))
     print (high_value_tickers)
     useful_columns = config.FEATURES + config.DEPENDENT_VARIABLES + config.HOT_ENCODING_FEATURES + ['Date', 'total_assets', 'ticker', 'total_liabilities']
     limit_features_df = [x[useful_columns] for x in all_data.values()]
@@ -63,6 +63,7 @@ def main():
 
     logger.info(f"\nTraining basic model...")
     basic_model = TransformerModel(config.FEATURE_COUNT, len(config.DEPENDENT_VARIABLES), 32).to(device)
+    # basic_model = StockPredictor(config.FEATURE_COUNT, len(config.DEPENDENT_VARIABLES), 32).to(device)
     # basic_model = LSTMModel(config.FEATURE_COUNT, config.LOOKBACK_WINDOW, len(config.DEPENDENT_VARIABLES)).to(device)
     # basic_model = LinearBaseline(config.FEATURE_COUNT, config.LOOKBACK_WINDOW, len(config.DEPENDENT_VARIABLES)).to(device)
 

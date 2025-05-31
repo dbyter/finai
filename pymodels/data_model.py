@@ -6,6 +6,8 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import os
 import pickle
+import yfinance as yf
+from .config import ModelConfig
 # Set up logging configuration at the start of the file
 logging.basicConfig(
     level=logging.INFO,
@@ -21,6 +23,7 @@ class DataModel:
         self.file_name = "data_with_fundamentals.pkl"
         # Create data folder if it doesn't exist
         os.makedirs(self.data_folder, exist_ok=True)
+        self.config = ModelConfig()
 
     def get_data (self):
         if self.use_cache and os.path.exists(f"{self.data_folder}/{self.file_name}"):
@@ -56,12 +59,15 @@ class DataModel:
 
         # Calculate various returns 
         df['Return'] = df['Close'].pct_change()
+        df['Past_7_Day_Return_Volatility'] = df['Return'].rolling(window=7).std()
+        df['Past_14_Day_Return_Volatility'] = df['Return'].rolling(window=14).std()
+        df['Past_28_Day_Return_Volatility'] = df['Return'].rolling(window=28).std()
         df['Price_Diff'] = df['Close'] - df['Open']
         df['Next_Day_Return'] = df['Return'].shift(-1)
-        df['Next_7_Day_Return'] = df['Return'].rolling(window=7).sum().shift(-6)
-        df['Next_14_Day_Return'] = df['Return'].rolling(window=14).sum().shift(-13)
-        df['Next_21_Day_Return'] = df['Return'].rolling(window=21).sum().shift(-20)
-        df['Next_28_Day_Return'] = df['Return'].rolling(window=28).sum().shift(-27)
+        df['Next_7_Day_Return'] = df['Close'].pct_change(periods=7).shift(-7)
+        df['Next_14_Day_Return'] = df['Close'].pct_change(periods=14).shift(-14)
+        df['Next_21_Day_Return'] = df['Close'].pct_change(periods=21).shift(-21)
+        df['Next_28_Day_Return'] = df['Close'].pct_change(periods=28).shift(-28)
         # df['Next_1_Day_Return_StdDev'] = df['Return'].rolling(window=1).std()
         df['Next_7_Day_Return_StdDev'] = df['Return'].rolling(window=7).std().shift(-6)
         df['Next_14_Day_Return_StdDev'] = df['Return'].rolling(window=14).std().shift(-13)
@@ -182,19 +188,22 @@ class DataModel:
     def load_data_from_mongo(self):
         def load_fundamentals_data_from_mongo(companies_collection, balance_sheet_collection, income_statement_collection, cash_flow_collection):
             logger.info("Starting data loading for all fundamentals")
+            match_query = {
+                "ticker": {"$in": self.config.TICKERS}
+            }
             current_time = datetime.now()
-            balance_sheet_data = list(balance_sheet_collection.find({}))
+            balance_sheet_data = list(balance_sheet_collection.find(match_query))
             balance_sheet_data = pd.DataFrame(balance_sheet_data)
             balance_sheet_data.set_index("date", inplace=True)
             balance_sheet_data.drop(columns=["_id"], inplace=True)
 
             logger.info(f"Balance sheet data loaded: {len(balance_sheet_data)}")
-            income_statement_data = list(income_statement_collection.find({}))
+            income_statement_data = list(income_statement_collection.find(match_query))
             income_statement_data = pd.DataFrame(income_statement_data)
             income_statement_data.set_index("date", inplace=True)
             income_statement_data.drop(columns=["_id"], inplace=True)
             logger.info(f"Income statement data loaded: {len(income_statement_data)}")
-            cash_flow_data = list(cash_flow_collection.find({}))
+            cash_flow_data = list(cash_flow_collection.find(match_query))
             cash_flow_data = pd.DataFrame(cash_flow_data)
             cash_flow_data.set_index("date", inplace=True)
             cash_flow_data.drop(columns=["_id"], inplace=True)
@@ -213,6 +222,11 @@ class DataModel:
             logger.info("Starting stock aggregation pipeline")
             # Optimize the query to only fetch required fields
             aggregation_pipeline = [
+                {
+                    "$match": {
+                        "ticker": {"$in": self.config.TICKERS}
+                    }
+                },
                 {"$project": {
                     "ticker": 1,
                     "date": 1,
@@ -250,6 +264,44 @@ class DataModel:
             logger.info(f"Data loading completed in {datetime.now() - current_time}")
             return all_data
 
+        def load_benchmark_data_from_yfinance():
+            logger.info("Starting benchmark data loading")
+            benchmark_data = yf.download("^GSPC", start="2010-01-01", end="2025-05-31")
+            benchmark_data = benchmark_data.reset_index()
+            benchmark_data.columns = benchmark_data.columns.droplevel('Ticker')
+            # Add prefix to the columns
+            benchmark_data= benchmark_data.sort_values('Date', ascending=True)
+            benchmark_data['Return'] = benchmark_data['Close'].pct_change()
+            benchmark_data['7day_return'] = benchmark_data['Close'].pct_change(7)
+            benchmark_data['14day_return'] = benchmark_data['Close'].pct_change(14)
+            benchmark_data['21day_return'] = benchmark_data['Close'].pct_change(21)
+            benchmark_data['28day_return'] = benchmark_data['Close'].pct_change(28)
+            benchmark_data['7day_return_stddev'] = benchmark_data['Return'].rolling(window=7).std()
+            benchmark_data['14day_return_stddev'] = benchmark_data['Return'].rolling(window=14).std()
+            benchmark_data['21day_return_stddev'] = benchmark_data['Return'].rolling(window=21).std()
+            benchmark_data['28day_return_stddev'] = benchmark_data['Return'].rolling(window=28).std()
+            benchmark_data.columns = ["Date"] + [f"SPY_{col}" for col in benchmark_data.columns if col != "Date"]
+            logger.info(f"Benchmark data loaded: {len(benchmark_data)}")
+            return benchmark_data
+        
+        def load_nasdaq_composite_data_from_yfinance():
+            logger.info("Starting NASDAQ composite data loading")
+            nasdaq_composite_data = yf.download("^IXIC", start="2010-01-01", end="2025-05-31")
+            nasdaq_composite_data = nasdaq_composite_data.reset_index()
+            nasdaq_composite_data.columns = nasdaq_composite_data.columns.droplevel('Ticker')
+            nasdaq_composite_data['Return'] = nasdaq_composite_data['Close'].pct_change()
+            nasdaq_composite_data['7day_return'] = nasdaq_composite_data['Close'].pct_change(7)
+            nasdaq_composite_data['14day_return'] = nasdaq_composite_data['Close'].pct_change(14)
+            nasdaq_composite_data['21day_return'] = nasdaq_composite_data['Close'].pct_change(21)
+            nasdaq_composite_data['28day_return'] = nasdaq_composite_data['Close'].pct_change(28)
+            nasdaq_composite_data['7day_return_stddev'] = nasdaq_composite_data['Return'].rolling(window=7).std()
+            nasdaq_composite_data['14day_return_stddev'] = nasdaq_composite_data['Return'].rolling(window=14).std()
+            nasdaq_composite_data['21day_return_stddev'] = nasdaq_composite_data['Return'].rolling(window=21).std()
+            nasdaq_composite_data['28day_return_stddev'] = nasdaq_composite_data['Return'].rolling(window=28).std()
+            nasdaq_composite_data.columns = ["Date"] + [f"NASDAQ_{col}" for col in nasdaq_composite_data.columns if col != "Date"]
+            logger.info(f"NASDAQ composite data loaded: {len(nasdaq_composite_data)}")
+            return nasdaq_composite_data
+
         logger.info("Starting data loading for all tickers")
         current_time = datetime.now()    
         db_params = {
@@ -265,7 +317,11 @@ class DataModel:
         cash_flow_collection = db.cash_flows
         companies_collection = db.companies
 
+        benchmark_data = load_benchmark_data_from_yfinance()
+        nasdaq_composite_data = load_nasdaq_composite_data_from_yfinance()
+        logger.info(f"Benchmark data loaded: {benchmark_data.head()}")
         stock_data = load_stock_data_from_mongo(stock_collection)
+
         balance_sheet_data, income_statement_data, cash_flow_data = load_fundamentals_data_from_mongo(companies_collection, balance_sheet_collection, income_statement_collection, cash_flow_collection)
 
         # Merge stock and fundamentals data for each ticker
@@ -301,14 +357,36 @@ class DataModel:
                 by='ticker',
                 direction='backward'
             )
+
+            # Data pre-benchmark
+            logger.info(f"Merging benchmark data with {len(merged_df)} rows")
+            merged_df = pd.merge_asof(
+                merged_df,
+                benchmark_data.sort_values('Date').reset_index(),
+                left_on='Date',
+                right_on='Date',
+                direction='backward'
+            )
+            # Data post-benchmark
+            logger.info(f"Merged benchmark data;  {len(merged_df)} rows")
+
+            # Data pre-nasdaq
+            logger.info(f"Merging NASDAQ composite data with {len(merged_df)} rows")
+            merged_df = pd.merge_asof(
+                merged_df,
+                nasdaq_composite_data.sort_values('Date').reset_index(),
+                left_on='Date',
+                right_on='Date',
+                direction='backward'
+            )
+            # Data post-nasdaq
+            logger.info(f"Merged NASDAQ composite data;  {len(merged_df)} rows")
+
             merged_df.reset_index(inplace=True)
             merged_data[ticker] = merged_df
         logger.info(f"Successfully merged data for {len(merged_data)} tickers")
         logger.info(f"Length of AAPL: {len(merged_data['AAPL'])}")
         return merged_data
-
-
-
 
 
 DATA_FOLDER = "./data/"

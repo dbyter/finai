@@ -115,8 +115,8 @@ class DataProcessor:
             Xs, ys = [], []
             end = len(features) - horizon           # last usable t
             for t in range(lookback, end):
-                Xs.append(features[t - lookback + 1 : t + 1]) # ends at t-1 when horizon=1
-                ys.append(targets[t + horizon])     # label at t+horizon
+                Xs.append(features[t - lookback + 1 : t + 1]) 
+                ys.append(targets[t + horizon])    
             return np.array(Xs), np.array(ys)
             
         logger.debug("Starting data preprocessing")
@@ -231,12 +231,13 @@ class DataProcessor:
             
             # Apply outlier mask to hot encoding data
             ticker_hot_encoding_filtered = ticker_hot_encoding[train_mask].values[outlier_mask]
+            other_hot_encoding_filtered = other_hot_encoding[train_mask].values[outlier_mask]
             
             # Combine scaled features with hot encoding for training
             ticker_train_x = np.hstack([
                 ticker_train_x,
+                other_hot_encoding_filtered,
                 ticker_hot_encoding_filtered,
-                # other_hot_encoding[train_mask].values[outlier_mask]
             ])
             
             # Process test data if available
@@ -255,12 +256,12 @@ class DataProcessor:
                 
                 # Apply outlier mask to test hot encoding data
                 ticker_hot_encoding_test_filtered = ticker_hot_encoding[test_mask].values[outlier_mask]
-                
+                other_hot_encoding_test_filtered = other_hot_encoding[test_mask].values[outlier_mask]
                 # Combine scaled features with hot encoding for testing
                 ticker_test_x = np.hstack([
                     ticker_test_x,
+                    other_hot_encoding_test_filtered,
                     ticker_hot_encoding_test_filtered,
-                    # other_hot_encoding[test_mask].values[outlier_mask]
                 ])
                 
                 # Append test data
@@ -328,7 +329,7 @@ class DataProcessor:
             train_dataset,
             batch_size=self.config.BATCH_SIZE,
             shuffle=True,
-            num_workers=4,
+            num_workers=0,
             pin_memory=True
         )
         

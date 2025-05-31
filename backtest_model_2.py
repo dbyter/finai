@@ -89,9 +89,11 @@ def create_lagged_sequence(scaled_data, original_data, lookback_window, config):
     scaled_sequence = scaled_data[-lookback_window:]
     original_sequence = original_data[-lookback_window:]
     
+    # Get current ticker from the index
+    current_ticker = original_sequence.index.get_level_values('ticker')[0]
+    
     # Create dummy variables for all tickers
     ticker_dummies = np.zeros((lookback_window, len(config.TICKERS)))
-    current_ticker = original_sequence['ticker'].iloc[0]
     ticker_idx = config.TICKERS.index(current_ticker)
     ticker_dummies[:, ticker_idx] = 1
     
@@ -139,16 +141,26 @@ def calculate_portfolio_metrics(returns, benchmark_returns=None):
         try:
             benchmark_returns = benchmark_returns.fillna(0)  # Handle NaN values
             benchmark_cumulative = (1 + benchmark_returns).cumprod() - 1
-            benchmark_total = float(benchmark_cumulative.iloc[-1])
-            metrics['benchmark_return'] = benchmark_total
+            benchmark_total = benchmark_cumulative.iloc[-1]
+            if isinstance(benchmark_total, pd.Series):
+                benchmark_total = benchmark_total.iloc[0]
+            metrics['benchmark_return'] = float(benchmark_total)
             metrics['excess_return'] = float(total_return - benchmark_total)
             
             # Information ratio
             tracking_error = (returns - benchmark_returns).std() * np.sqrt(252)
-            information_ratio = (annualized_return - (1 + benchmark_total) ** (1/years) + 1) / tracking_error
+            benchmark_annualized = (1 + benchmark_total) ** (1/years) - 1
+            information_ratio = (annualized_return - benchmark_annualized) / tracking_error
             metrics['information_ratio'] = float(information_ratio)
+            
+            # Calculate benchmark Sharpe ratio
+            benchmark_excess_returns = benchmark_returns - 0.02/252
+            benchmark_sharpe = np.sqrt(252) * benchmark_excess_returns.mean() / benchmark_returns.std()
+            metrics['benchmark_sharpe_ratio'] = float(benchmark_sharpe)
         except Exception as e:
             logger.warning(f"Error calculating benchmark metrics: {str(e)}")
+            logger.warning(f"Benchmark returns shape: {benchmark_returns.shape}")
+            logger.warning(f"Benchmark returns head: {benchmark_returns.head()}")
     
     return metrics
 
@@ -160,12 +172,16 @@ def optimize_portfolio(predicted_returns, predicted_stddevs, risk_aversion=1.0):
         portfolio_return = np.sum(predicted_returns * weights)
         # Use predicted standard deviations to calculate portfolio variance
         portfolio_variance = np.sum((predicted_stddevs * weights)**2)
-        return -(portfolio_return - risk_aversion * portfolio_variance)
+        # Minimize negative return plus risk-adjusted variance
+        # (scipy minimizes, so negative return maximizes return)
+        return -portfolio_return + risk_aversion * portfolio_variance
     
     constraints = [
-        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0},
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0},  # weights sum to 1
     ]
-    bounds = tuple((0, 1) for _ in range(n_assets))
+    
+    # Set bounds: minimum 0%, maximum 20% per asset
+    bounds = tuple((0, 0.20) for _ in range(n_assets))
     
     initial_weights = np.ones(n_assets) / n_assets
     result = minimize(objective, initial_weights, method='SLSQP',
@@ -182,61 +198,76 @@ def backtest_portfolio(model, feature_scalers, target_scalers, data, config, dev
     test_end = pd.to_datetime(config.TEST_END_DATE)
     
     # Get test period data
-    test_data = data[test_start:test_end]
-    logger.info(f"Test period: {test_data.index[0]} to {test_data.index[-1]}")
+    test_data = data.loc[test_start:test_end]
+    logger.info(f"Test period: {test_data.index.get_level_values('Date')[0]} to {test_data.index.get_level_values('Date')[-1]}")
+    
+    # Filter out tickers that don't have data for the entire test period
+    available_dates = test_data.index.get_level_values('Date').unique()
+    ticker_counts = test_data.groupby(level='ticker').size()
+    logger.info(f"Ticker counts: {ticker_counts.to_dict()}")
+    valid_tickers = ticker_counts[ticker_counts == len(available_dates)].index.tolist()
+    
+    # Also filter for tickers that have scalers
+    valid_tickers = [t for t in valid_tickers if t in feature_scalers and t in target_scalers]
+    
+    logger.info(f"Found {len(valid_tickers)} tickers with complete data out of {len(config.TICKERS)} total tickers")
+    
+    # Filter test_data to only include valid tickers
+    test_data = test_data[test_data.index.get_level_values('ticker').isin(valid_tickers)]
     
     # Get benchmark data
-    benchmark_returns = None
-    try:
-        logger.info("Downloading benchmark data...")
-        benchmark = yf.download('AAPL', 
-                              start=test_data.index[0], 
-                              end=test_data.index[-1],
-                              progress=False)
-        if not benchmark.empty:
-            benchmark_returns = benchmark['Close'].pct_change()
-            logger.info(f"Successfully downloaded benchmark data with {len(benchmark_returns)} points")
-        else:
-            logger.warning("Downloaded benchmark data is empty")
-    except Exception as e:
-        logger.warning(f"Failed to download benchmark data: {str(e)}")
+    logger.info("Downloading benchmark data...")
+    benchmark = yf.download('^GSPC', 
+                          start=test_data.index.get_level_values('Date')[0], 
+                          end=test_data.index.get_level_values('Date')[-1],
+                          progress=False)
+    benchmark = benchmark.reset_index()
+    benchmark.columns = benchmark.columns.droplevel('Ticker')
+    benchmark_daily_returns = benchmark['Close'].pct_change()
+    
+    # Get unique dates for iteration
+    unique_dates = test_data.index.get_level_values('Date').unique()
     
     # Initialize portfolio tracking
-    portfolio_returns = pd.Series(index=test_data.index, dtype=float)
-    portfolio_weights = pd.DataFrame(index=test_data.index, columns=config.TICKERS)
+    portfolio_returns = pd.Series(index=unique_dates, dtype=float)
+    equal_weight_returns = pd.Series(index=unique_dates, dtype=float)
+    portfolio_weights = pd.DataFrame(index=unique_dates, columns=valid_tickers)
     
     # Get all Mondays in the test period
-    mondays = pd.date_range(start=test_data.index[0], end=test_data.index[-1], freq='W-MON')
+    mondays = pd.date_range(start=unique_dates[0], end=unique_dates[-1], freq='W-MON')
+    
+    # Initialize with equal weights for the first day
+    if len(unique_dates) > 0:
+        portfolio_weights.loc[unique_dates[0]] = 1.0 / len(valid_tickers)
     
     # Track predictions for each horizon
     predictions = {
-        '1d': pd.DataFrame(index=test_data.index, columns=config.TICKERS),
-        '7d': pd.DataFrame(index=test_data.index, columns=config.TICKERS),
-        '14d': pd.DataFrame(index=test_data.index, columns=config.TICKERS),
-        '21d': pd.DataFrame(index=test_data.index, columns=config.TICKERS),
-        '28d': pd.DataFrame(index=test_data.index, columns=config.TICKERS)
+        '1d': pd.DataFrame(index=unique_dates, columns=valid_tickers),
+        '7d': pd.DataFrame(index=unique_dates, columns=valid_tickers),
+        '14d': pd.DataFrame(index=unique_dates, columns=valid_tickers),
+        '21d': pd.DataFrame(index=unique_dates, columns=valid_tickers),
+        '28d': pd.DataFrame(index=unique_dates, columns=valid_tickers)
     }
     
     # Track standard deviation predictions
     stddev_predictions = {
-        '7d': pd.DataFrame(index=test_data.index, columns=config.TICKERS),
-        '14d': pd.DataFrame(index=test_data.index, columns=config.TICKERS),
-        '21d': pd.DataFrame(index=test_data.index, columns=config.TICKERS),
-        '28d': pd.DataFrame(index=test_data.index, columns=config.TICKERS)
+        '7d': pd.DataFrame(index=unique_dates, columns=valid_tickers),
+        '14d': pd.DataFrame(index=unique_dates, columns=valid_tickers),
+        '21d': pd.DataFrame(index=unique_dates, columns=valid_tickers),
+        '28d': pd.DataFrame(index=unique_dates, columns=valid_tickers)
     }
     
     # Run backtest
-    for i in range(len(test_data) - 1):
-        current_date = test_data.index[i]
+    for i, current_date in enumerate(unique_dates[:-1]):  # Exclude last date as we need next day's return
+        logger.info(f"Processing date: {current_date}")
         
         # Process each ticker
         ticker_predictions = {}
         ticker_stddevs = {}
-        for ticker in config.TICKERS:
+        for ticker in valid_tickers:
             try:
                 # Get ticker data up to current date
-                ticker_mask = test_data['ticker'] == ticker
-                ticker_data = test_data[ticker_mask].iloc[:i+1]
+                ticker_data = test_data.loc[pd.IndexSlice[:current_date, ticker], :]
                 
                 if len(ticker_data) < config.LOOKBACK_WINDOW:
                     continue
@@ -252,9 +283,7 @@ def backtest_portfolio(model, feature_scalers, target_scalers, data, config, dev
                 with torch.no_grad():
                     try:
                         X_tensor = torch.FloatTensor(sequence).to(device)
-                        logger.debug(f"Input tensor shape: {X_tensor.shape}")
                         predictions_scaled = model(X_tensor).cpu().numpy()
-                        logger.debug(f"Output tensor shape: {predictions_scaled.shape}")
                         
                         # Unscale predictions using ticker-specific scaler
                         predictions_unscaled = target_scalers[ticker].inverse_transform(predictions_scaled)
@@ -277,8 +306,6 @@ def backtest_portfolio(model, feature_scalers, target_scalers, data, config, dev
                         }
                     except Exception as e:
                         logger.error(f"Error in model prediction for {ticker} on {current_date}: {str(e)}")
-                        logger.error(f"Input sequence shape: {sequence.shape}")
-                        logger.error(f"Model device: {device}")
                         continue
             except Exception as e:
                 logger.warning(f"Error processing ticker {ticker} on {current_date}: {str(e)}")
@@ -297,42 +324,105 @@ def backtest_portfolio(model, feature_scalers, target_scalers, data, config, dev
             pred_returns = np.array([preds['7d'] for preds in ticker_predictions.values()])
             pred_stddevs = np.array([stddevs['7d'] for stddevs in ticker_stddevs.values()])
             
-            # Optimize weights using predicted returns and standard deviations
+            # Optimize and set new weights
             weights = optimize_portfolio(pred_returns, pred_stddevs)
-            portfolio_weights.loc[current_date, list(ticker_predictions.keys())] = weights
+            # Set weights for tickers with predictions
+            for ticker, weight in zip(ticker_predictions.keys(), weights):
+                portfolio_weights.loc[current_date, ticker] = weight
+            logger.info(f"Monday {current_date}: Set new weights for {len(ticker_predictions)} tickers")
+        else:
+            # Carry forward the last set of weights
+            prev_dates = portfolio_weights.index[portfolio_weights.index < current_date]
+            if len(prev_dates) == 0:
+                # If this is the first date, initialize with equal weights
+                portfolio_weights.loc[current_date] = 1.0 / len(valid_tickers)
+                logger.info(f"First date {current_date}: Initialized with equal weights")
+            else:
+                prev_date = prev_dates[-1]
+                portfolio_weights.loc[current_date] = portfolio_weights.loc[prev_date]
+                logger.info(f"Non-Monday {current_date}: Carried forward weights from {prev_date}")
         
-        # Calculate daily portfolio return
+        # Calculate daily portfolio return and equal-weight return
         if i > 0:
-            prev_weights = portfolio_weights.loc[portfolio_weights.index[portfolio_weights.index <= current_date][-1]]
             # Get returns for current date for all tickers
-            current_returns = test_data[test_data.index == current_date].set_index('ticker')['Return']
-            # Calculate portfolio return
-            portfolio_returns.loc[current_date] = np.sum(prev_weights * current_returns)
+            current_returns = test_data.loc[pd.IndexSlice[current_date, :], 'Return']
+            current_returns = current_returns.reset_index(level='Date', drop=True)
+            
+            # Calculate optimized portfolio return
+            current_weights = portfolio_weights.loc[current_date]
+            daily_return = np.sum(current_weights * current_returns)
+            portfolio_returns.loc[current_date] = daily_return
+            
+            # Calculate equal-weight portfolio return
+            equal_weight = 1.0 / len(valid_tickers)
+            equal_weight_return = np.sum(current_returns * equal_weight)
+            equal_weight_returns.loc[current_date] = equal_weight_return
+            
+            logger.info(f"Date {current_date}: Optimized return = {daily_return:.4f}, Equal-weight return = {equal_weight_return:.4f}")
     
     # Calculate performance metrics
-    portfolio_metrics = calculate_portfolio_metrics(portfolio_returns, benchmark_returns)
+    portfolio_metrics = calculate_portfolio_metrics(portfolio_returns, benchmark_daily_returns)
+    equal_weight_metrics = calculate_portfolio_metrics(equal_weight_returns, benchmark_daily_returns)
     
     # Log results
-    logger.info("\nPortfolio Performance Metrics:")
+    logger.info("\nOptimized Portfolio Performance Metrics:")
     logger.info(f"Total Return: {portfolio_metrics['total_return']:.2%}")
     logger.info(f"Annualized Return: {portfolio_metrics['annualized_return']:.2%}")
     logger.info(f"Maximum Drawdown: {portfolio_metrics['max_drawdown']:.2%}")
     logger.info(f"Sharpe Ratio: {portfolio_metrics['sharpe_ratio']:.2f}")
     
+    logger.info("\nEqual-Weight Portfolio Performance Metrics:")
+    logger.info(f"Total Return: {equal_weight_metrics['total_return']:.2%}")
+    logger.info(f"Annualized Return: {equal_weight_metrics['annualized_return']:.2%}")
+    logger.info(f"Maximum Drawdown: {equal_weight_metrics['max_drawdown']:.2%}")
+    logger.info(f"Sharpe Ratio: {equal_weight_metrics['sharpe_ratio']:.2f}")
+    
     # Log benchmark metrics if they exist
+    if 'benchmark_sharpe_ratio' in portfolio_metrics:
+        logger.info(f"\nS&P 500 Sharpe Ratio: {portfolio_metrics['benchmark_sharpe_ratio']:.2f}")
     if all(key in portfolio_metrics for key in ['excess_return', 'information_ratio']):
-        logger.info(f"Excess Return vs Benchmark: {portfolio_metrics['excess_return']:.2%}")
+        logger.info(f"Excess Return vs S&P 500: {portfolio_metrics['excess_return']:.2%}")
         logger.info(f"Information Ratio: {portfolio_metrics['information_ratio']:.2f}")
     elif 'excess_return' in portfolio_metrics:
-        logger.info(f"Excess Return vs Benchmark: {portfolio_metrics['excess_return']:.2%}")
+        logger.info(f"Excess Return vs S&P 500: {portfolio_metrics['excess_return']:.2%}")
+    
+    # Calculate ticker-specific metrics
+    ticker_metrics = {}
+    for ticker in valid_tickers:
+        # Calculate average weight
+        avg_weight = portfolio_weights[ticker].mean()
+        
+        # Calculate ticker returns
+        ticker_returns = test_data.loc[pd.IndexSlice[:, ticker], 'Return']
+        ticker_returns.index = ticker_returns.index.get_level_values('Date')
+        
+        # Calculate annualized return
+        total_return = (1 + ticker_returns).cumprod().iloc[-1] - 1
+        years = len(ticker_returns) / 252
+        annualized_return = (1 + total_return) ** (1/years) - 1
+        
+        ticker_metrics[ticker] = {
+            'average_weight': avg_weight,
+            'annualized_return': annualized_return
+        }
+    
+    # Save ticker metrics to CSV
+    ticker_metrics_df = pd.DataFrame.from_dict(ticker_metrics, orient='index')
+    ticker_metrics_df.index.name = 'ticker'
+    ticker_metrics_df.to_csv('ticker_metrics.csv', float_format='%.4f')
     
     return {
         'portfolio_returns': portfolio_returns,
-        'benchmark_returns': benchmark_returns,
+        'equal_weight_returns': equal_weight_returns,
         'portfolio_weights': portfolio_weights,
         'predictions': predictions,
         'stddev_predictions': stddev_predictions,
-        'metrics': portfolio_metrics
+        'metrics': {
+            'portfolio': portfolio_metrics,
+            'equal_weight': equal_weight_metrics
+        },
+        'ticker_metrics': ticker_metrics,
+        'valid_tickers': valid_tickers
     }
 
 if __name__ == "__main__":
@@ -362,10 +452,12 @@ if __name__ == "__main__":
     data['Date'] = pd.to_datetime(data['Date'])
     
     # Handle duplicate timestamps by keeping the last entry for each ticker-date combination
-    data = data.sort_values(['Date', 'ticker']).groupby(['Date', 'ticker']).last().reset_index()
-    data.set_index('Date', inplace=True)
+    data = data.sort_values(['Date', 'ticker']).groupby(['Date', 'ticker']).last()
     
+    # No need to reset_index and set_index again since groupby already creates the multi-index
     logger.info(f"Data shape after handling ticker-date duplicates: {data.shape}")
+    logger.info(f"Index levels: {data.index.names}")
+    
     # Run backtest
     results = backtest_portfolio(model, feature_scalers, target_scalers, data, config, device)
     
